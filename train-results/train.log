@@ -1,0 +1,52 @@
+(szm) lindo@minuteman:~/develop/radar-ml$ python3 ./train.py 
+Loading and scaling data.
+Encoding labels.
+class names: ['cat', 'dog', 'person']
+Unbalanced most common: [(2, 617), (1, 246), (0, 4)]
+Unbalanced label shape: (867,)
+Unbalanced data shape: (867, 10010)
+Balanced most common: [(2, 617), (1, 617), (0, 617)]
+Balanced label shape: (1851,)
+Balanced data shape: (1851, 10010)
+
+ Finding best svm estimator...
+Fitting 5 folds for each of 42 candidates, totalling 210 fits
+[Parallel(n_jobs=4)]: Using backend LokyBackend with 4 concurrent workers.
+[Parallel(n_jobs=4)]: Done  42 tasks      | elapsed: 12.1min
+[Parallel(n_jobs=4)]: Done 192 tasks      | elapsed: 86.0min
+[Parallel(n_jobs=4)]: Done 210 out of 210 | elapsed: 92.2min finished
+
+ Best estimator:
+SVC(C=100, break_ties=False, cache_size=1000, class_weight='balanced',
+    coef0=0.0, decision_function_shape='ovr', degree=3, gamma=0.001,
+    kernel='rbf', max_iter=-1, probability=True, random_state=1234,
+    shrinking=True, tol=0.001, verbose=False)
+
+ Best score for 5-fold search:
+0.9912162162162161
+
+ Best hyperparameters:
+{'C': 100, 'gamma': 0.001, 'kernel': 'rbf'}
+
+ Evaluating model.
+
+ Confusion matrix:
+[[110   0   0]
+ [  0 136   0]
+ [  0   2 123]]
+
+ Classification matrix:
+              precision    recall  f1-score   support
+
+         cat       1.00      1.00      1.00       110
+         dog       0.99      1.00      0.99       136
+      person       1.00      0.98      0.99       125
+
+    accuracy                           0.99       371
+   macro avg       1.00      0.99      0.99       371
+weighted avg       0.99      0.99      0.99       371
+
+
+ Saving svm model...
+
+ Saving label encoder.

@@ -1,0 +1,15 @@
+cycler==0.10.0
+grpcio==1.28.1
+joblib==0.14.1
+kiwisolver==1.2.0
+matplotlib==3.2.1
+numpy==1.18.4
+protobuf==3.11.3
+pyparsing==2.4.7
+python-dateutil==2.8.1
+scikit-learn==0.22.1
+scipy==1.4.1
+six==1.14.0
+sklearn==0.0
+termcolor==1.1.0
+WalabotAPI==1.2.2

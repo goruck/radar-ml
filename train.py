@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.preprocessing import maxabs_scale, MaxAbsScaler
 from sklearn.utils import resample
-from xgboost import XGBClassifier as xgb
+#from xgboost import XGBClassifier as xgb
 from itertools import product
 from collections import Counter
 from functools import reduce

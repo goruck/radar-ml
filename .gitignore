@@ -1,0 +1,3 @@
+*.pickle
+__pycache__
+.vscode

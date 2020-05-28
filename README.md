@@ -15,7 +15,7 @@ A photo of the hardware used for the self-supervised learning and predictions is
 
 ![Alt text](./images/training_setup.jpg?raw=true "training setup.")
 
-The Google TPU runs an object detection server over grpc that a client on the Raspberry Pi communicates with. The object detection server code can be found [here]().
+The Google TPU runs an object detection server over grpc that a client on the Raspberry Pi communicates with. The object detection server code can be found [here](https://github.com/goruck/detection_server).
 
 ## Training
 TBA

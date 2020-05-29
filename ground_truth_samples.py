@@ -65,7 +65,9 @@ def compute_distance(p0, p1):
 def convert_coordinates(camera_point, target_z, fx, fy, cx, cy):
     """ Convert a point from camera to radar coordinates.
 
-    Radar cordinate system is used as the reference. 
+    Radar cordinate system is used as the reference.
+
+    Assumes camera z optical axis is aligned with radar z-axis.
 
     Camera coordinates (openCV style):
         top, left is at (x, y) = (0, 0)
@@ -90,9 +92,11 @@ def convert_coordinates(camera_point, target_z, fx, fy, cx, cy):
     # Point in camera coordinate system.
     cam_x, cam_y = camera_point
     
+    # Same point in world coordinates. 
     world_x = (cam_x - cx) * target_z / fx
     world_y = (cam_y - cy) * target_z / fy
 
+    # Rotate and translate to convert point from world to radar coordinates.
     if RADAR_HORIZONTAL:
         radar_x = world_y - CAMERA_Y_OFFSET
         radar_y = world_x - CAMERA_X_OFFSET

@@ -42,6 +42,10 @@ You use the Python module [train.py](./train.py) to train an SVM on the radar sa
 # Making Predictions
 The Python module [predict.py](./predict.py) is used to illustrate how predictions are made on novel radar samples using the trained SVM model. You should make sure the radar Arena, Threshold, Filter Type and Profile are similar to what was used for training. Additionally, the observations need to be constructed from the same orthogonal planes.
 
+An example prediction is shown below.
+
+![Alt text](./images/prediction-example.png?raw=true "svm confusion matrix.")
+
 You can use this module and the trained model to run predictions on your own Walabot radar unit.
 
 # License

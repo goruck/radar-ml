@@ -15,7 +15,7 @@ from os import path
 from sys import exit
 
 # Radar detection threshold. 
-RADAR_THRESHOLD = 10
+RADAR_THRESHOLD = 5
 # Set to True if using Moving Target Identification (MTI) filter.
 MTI = True
 
@@ -25,7 +25,7 @@ with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
 with open(path.join(common.PRJ_DIR, common.LABELS), 'rb') as fp:
     le = pickle.load(fp)
 
-def classifier(observation, min_proba=0.90):
+def classifier(observation, min_proba=0.98):
     # perform classification on a single radar image.
     # note: reshape(1,-1) converts 1D array into 2D
     preds = model.predict_proba(observation.reshape(1, -1))[0]

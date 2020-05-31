@@ -69,11 +69,12 @@ def convert_coordinates(camera_point, target_z, fx, fy, cx, cy):
 
     Assumes camera z optical axis is aligned with radar z-axis.
 
-    Camera coordinates (openCV style):
+    Camera coordinate limits (OpenCV style):
         top, left is at (x, y) = (0, 0)
-        bottom, right is at (x, y) = (1, 1)
-        top, right is at (x, y) = (1, 0)
-        bottom, left is at (x, y) = (0, 1)
+        bottom, right is at (x, y) = (w, h)
+        top, right is at (x, y) = (w, 0)
+        bottom, left is at (x, y) = (0, h)
+    Where (w, h) is the camera's resolution in pixels.
 
     Radar coordinates:
         Center is at (x, y, z) = (0, 0, 0)
@@ -355,7 +356,7 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
                 #targets = get_derived_targets(raw_image_np, size_x, size_y, size_z)
 
                 logger.info(f'Sample number {sample_num} of {num_samples}'.center(60, '-'))
-                # Find the detected object from semantic segmentation closest to each radar target.
+                # Find the detected object closest to each radar target.
                 for t, target in enumerate(targets):
                     logger.info(f'Target #{t + 1}:')
                     logger.debug('\nx: {}\ny: {}\nz: {}\namplitude: {}\n'.format(

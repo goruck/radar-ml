@@ -222,13 +222,13 @@ def process_samples(samples, proj_mask=[True,True,True]):
     return np.array([make(t) for t in samples])
 
 def main():
-    # Load the known faces and embeddings.
+    # Load radar observations and labels. 
     with open(path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
         data_pickle = pickle.load(fp)
 
-    print('Loading and scaling data.')
-    processed_data = process_samples(data_pickle['samples'], proj_mask=PROJ_MASK)
-    #print('processed_data {}'.format(processed_data))
+    print('Loading and scaling samples.')
+    processed_samples = process_samples(data_pickle['samples'], proj_mask=PROJ_MASK)
+    #print('processed_samples {}'.format(processed_samples))
 
     # Encode the labels.
     print('Encoding labels.')
@@ -238,7 +238,7 @@ def main():
     print(f'class names: {class_names}')
 
     # Balance the dataset. 
-    balanced_labels, balanced_data = balance_classes(encoded_labels, processed_data)
+    balanced_labels, balanced_data = balance_classes(encoded_labels, processed_samples)
 
     # Plot the dataset.
     plot_data = balanced_data

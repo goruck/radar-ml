@@ -458,17 +458,7 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
             # Save data but do not animate.
             for data in get_samples():
                 projections, target_name, _, _ = data
-                projection_xz, projection_yz, projection_xy = projections
-
-                all_projections = np.concatenate(
-                    (
-                        projection_xy, projection_xz, projection_yz
-                    ),
-                    axis=None
-                )
-                logger.info(f'projections_all shape: {all_projections.shape}')
-
-                samples.append(all_projections)
+                samples.append(projections)
                 labels.append(target_name)
 
     return samples, labels

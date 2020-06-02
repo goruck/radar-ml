@@ -34,9 +34,6 @@ RANDOM_SEED = 1234
 FOLDS = 5
 # Number of parameters to combine for xgb random search. 
 PARA_COMB = 20
-# Radar 2-D projections to use for training.
-# [x-y, x-z, y-z]
-PROJ_MASK = [True, False, False]
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """ Generate model confusion matrix and classification report. """
@@ -200,34 +197,14 @@ def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
     print(random_search.best_params_)
     return random_search.best_estimator_
 
-def process_samples(samples, proj_mask=[True,True,True]):
-    """ Prepare sample for training.
-
-    Choose projection(s) to use for train and scale.
-
-    Args:
-        samples (tuple of projections): Ground truth observations.
-        proj_mask (list of bool): Projection(s) to use (x-y, y-z, x-z)
-
-    Returns:
-        np.array: processed samples
-    """
-    def make(t):
-        # Use only projections of interest.
-        wanted_projections = tuple(p for i, p in enumerate(t) if proj_mask[i])
-        # Concatenate into a flattened feature vector.
-        concat_projections = np.concatenate(wanted_projections, axis=None)
-        # Scale features to the [-1, 1] range.
-        return maxabs_scale(concat_projections, axis=0, copy=True)
-    return np.array([make(t) for t in samples])
-
 def main():
     # Load radar observations and labels. 
     with open(path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
         data_pickle = pickle.load(fp)
 
     print('Loading and scaling samples.')
-    processed_samples = process_samples(data_pickle['samples'], proj_mask=PROJ_MASK)
+    processed_samples = common.process_samples(data_pickle['samples'],
+        proj_mask=common.PROJ_MASK)
     #print('processed_samples {}'.format(processed_samples))
 
     # Encode the labels.

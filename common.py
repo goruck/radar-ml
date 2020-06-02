@@ -7,6 +7,7 @@ Copyright (c) 2020 Lindo St. Angel.
 import WalabotAPI as radar
 import numpy as np
 from collections import namedtuple
+from sklearn.preprocessing import maxabs_scale
 
 # Radar scan arena in spherical (r-Θ-Φ) coordinates from radar unit origin.
 # Radial distance (R) is along the Z axis. In cm.
@@ -27,11 +28,15 @@ PRJ_DIR = '/home/pi/radar-ml/'
 # Radar samples with ground truth lables.
 RADAR_DATA = 'datasets/radar_samples.pickle'
 # SVM model name.
-SVM_MODEL = 'train-results/svm_radar_classifier.pickle'
+SVM_MODEL = 'train-results/svm_radar_classifier_all.pickle'
 # XGBoost model name.
 XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
 # Label encoder name.
 LABELS = 'train-results/radar_labels.pickle'
+
+# Radar 2-D projections to use for training and predictions.
+# [x-y, x-z, y-z]
+PROJ_MASK = [True, True, True]
 
 DerivedTarget = namedtuple(
     'DerivedTarget', [
@@ -115,3 +120,24 @@ def get_derived_targets(radar_data, size_x, size_y, size_z, num_targets=1):
         )
 
     return [make(i, j, k) for i, j, k in zip(max_theta_indices, max_phi_indices, max_r_indices)]
+
+def process_samples(samples, proj_mask=[True,True,True]):
+    """ Prepare sample for training.
+
+    Choose projection(s) to use for train and scale.
+
+    Args:
+        samples (list of tuple of projections): Observations.
+        proj_mask (list of bool): Projection(s) to use (x-y, y-z, x-z)
+
+    Returns:
+        np.array: processed samples
+    """
+    def make(t):
+        # Use only projections of interest.
+        wanted_projections = tuple(p for i, p in enumerate(t) if proj_mask[i])
+        # Concatenate into a flattened feature vector.
+        concat_projections = np.concatenate(wanted_projections, axis=None)
+        # Scale features to the [-1, 1] range.
+        return maxabs_scale(concat_projections, axis=0, copy=True)
+    return np.array([make(t) for t in samples])

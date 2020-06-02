@@ -9,7 +9,6 @@ import numpy as np
 import pickle
 import common
 from sklearn.svm import SVC
-from sklearn.preprocessing import maxabs_scale
 from termcolor import colored
 from os import path
 from sys import exit
@@ -89,9 +88,9 @@ def main():
             raw_image, size_x, size_y, size_z, _ = radar.GetRawImage()
             raw_image_np = np.array(raw_image, dtype=np.float32)
 
-            for i, target in enumerate(targets):
+            for t, target in enumerate(targets):
                 print('Target #{}:\nx: {}\ny: {}\nz: {}\namplitude: {}\n'.format(
-                    i + 1, target.xPosCm, target.yPosCm, target.zPosCm, target.amplitude))
+                    t + 1, target.xPosCm, target.yPosCm, target.zPosCm, target.amplitude))
 
                 i, j, k = common.calculate_matrix_indices(
                     target.xPosCm, target.yPosCm, target.zPosCm,
@@ -104,15 +103,9 @@ def main():
                 # projection_xy is 2D projection of target signal in x-y plane.
                 projection_xy = raw_image_np[:,:,k]
 
-                all_projections = np.concatenate(
-                    (
-                        projection_xy, projection_xz, projection_yz
-                    ),
-                    axis=None
-                )
-
-                # Flatten and scale each feature to the [-1, 1] range.
-                observation = maxabs_scale(all_projections, axis=0, copy=True)
+                observation = common.process_samples(
+                    [(projection_xy, projection_yz, projection_xz)],
+                    proj_mask=common.PROJ_MASK)
 
                 # Make a prediction. 
                 name, prob = classifier(observation)
@@ -124,7 +117,7 @@ def main():
                     color_name = colored(name, 'blue')
                 else:
                     color_name = colored(name, 'red')
-                print(f'Detected {color_name} with probability {prob}')
+                print(f'Detected {color_name} with probability {prob}\n')
     except KeyboardInterrupt:
         pass
     finally:

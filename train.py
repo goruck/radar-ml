@@ -34,6 +34,9 @@ RANDOM_SEED = 1234
 FOLDS = 5
 # Number of parameters to combine for xgb random search. 
 PARA_COMB = 20
+# Radar 2-D projections to use for training.
+# (x-y, x-z, y-z)
+PROJ_MASK = (True, True, True)
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """ Generate model confusion matrix and classification report. """
@@ -204,7 +207,7 @@ def main():
 
     print('Loading and scaling samples.')
     processed_samples = common.process_samples(data_pickle['samples'],
-        proj_mask=common.PROJ_MASK)
+        proj_mask=PROJ_MASK)
     #print('processed_samples {}'.format(processed_samples))
 
     # Encode the labels.

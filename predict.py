@@ -18,6 +18,10 @@ RADAR_THRESHOLD = 5
 # Set to True if using Moving Target Identification (MTI) filter.
 MTI = True
 
+# Radar 2-D projections to use for predictions.
+# (x-y, x-z, y-z)
+PROJ_MASK = (True, True, True)
+
 # Load classifier along with the label encoder.
 with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
     model = pickle.load(fp)
@@ -105,7 +109,7 @@ def main():
 
                 observation = common.process_samples(
                     [(projection_xy, projection_yz, projection_xz)],
-                    proj_mask=common.PROJ_MASK)
+                    proj_mask=PROJ_MASK)
 
                 # Make a prediction. 
                 name, prob = classifier(observation)

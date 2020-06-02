@@ -38,12 +38,42 @@ LABELS = 'train-results/radar_labels.pickle'
 # [x-y, x-z, y-z]
 PROJ_MASK = [True, True, True]
 
-DerivedTarget = namedtuple(
-    'DerivedTarget', [
-        'xPosCm', 'yPosCm', 'zPosCm', 'amplitude',
-        'i', 'j', 'k'
-    ]
-)
+class DerivedTarget(namedtuple('DerivedTarget', ['xPosCm', 'yPosCm', 'zPosCm',
+                               'amplitude','i', 'j', 'k'])):
+    """ Radar targets. Replaces Walabot getSensorTargets(). """
+    @staticmethod
+    def get_derived_targets(radar_data, size_x, size_y, size_z, num_targets=1):
+        """ Derive targets from raw radar data. """
+        def find_max_indices(inner_axis, outer_axis):
+            """ Sum over specified rows and columns in data. """
+            sums = np.sum(np.sum(radar_data, axis=inner_axis), axis=outer_axis)
+            max_indices = np.argpartition(sums, -num_targets)[-num_targets:]
+            return (max_indices[np.argsort(sums[max_indices])])
+
+        # Find indices where radar signal is strongest.
+        max_theta_indices = find_max_indices(1, 1)
+        max_phi_indices = find_max_indices(0, 1)
+        max_r_indices = find_max_indices(0, 0)
+
+        def make(i, j, k):
+            """
+            Calculate coordinates of target from max indices.
+            TODO: change to find clusters of targets.
+            """
+            theta = THETA_MIN + i * (THETA_MAX - THETA_MIN) / (size_x - 1)
+            phi = PHI_MIN + j * (PHI_MAX - PHI_MIN) / (size_y - 1)
+            r = R_MIN + k * (R_MAX - R_MIN) / (size_z - 1)
+            x, y, z = spherical_to_cartesian(r, theta, phi)
+            return DerivedTarget(
+                xPosCm = x,
+                yPosCm = y,
+                zPosCm = z,
+                amplitude = None, # TODO - implement,
+                i = i,
+                j = j,
+                k = k
+            )
+        return [make(i, j, k) for i, j, k in zip(max_theta_indices, max_phi_indices, max_r_indices)]
 
 def calibrate():
     """ Calibrate radar. """
@@ -85,41 +115,6 @@ def calculate_matrix_indices(x, y, z, size_x, size_y, size_z):
     j = int((phi - PHI_MIN) * (size_y - 1) / (PHI_MAX - PHI_MIN))
     k = int((r - R_MIN) * (size_z - 1) / (R_MAX - R_MIN))
     return (i, j, k)
-
-def get_derived_targets(radar_data, size_x, size_y, size_z, num_targets=1):
-    """ Derive targets from raw radar data. """
-    def find_max_indices(inner_axis, outer_axis):
-        """ Sum over specified rows and columns in data. """
-        sums = np.sum(np.sum(radar_data, axis=inner_axis), axis=outer_axis)
-        #print(sums)
-        max_indices = np.argpartition(sums, -num_targets)[-num_targets:]
-        return (max_indices[np.argsort(sums[max_indices])])
-
-    # Find indices where radar signal is strongest.
-    max_theta_indices = find_max_indices(1, 1)
-    max_phi_indices = find_max_indices(0, 1)
-    max_r_indices = find_max_indices(0, 0)
-
-    def make(i, j, k):
-        """
-        Calculate coordinates of target from max indices.
-        TODO: change to find clusters of targets.
-        """
-        theta = THETA_MIN + i * (THETA_MAX - THETA_MIN) / (size_x - 1)
-        phi = PHI_MIN + j * (PHI_MAX - PHI_MIN) / (size_y - 1)
-        r = R_MIN + k * (R_MAX - R_MIN) / (size_z - 1)
-        x, y, z = spherical_to_cartesian(r, theta, phi)
-        return DerivedTarget(
-            xPosCm = x,
-            yPosCm = y,
-            zPosCm = z,
-            amplitude = None, # TODO - implement,
-            i = i,
-            j = j,
-            k = k
-        )
-
-    return [make(i, j, k) for i, j, k in zip(max_theta_indices, max_phi_indices, max_r_indices)]
 
 def process_samples(samples, proj_mask=[True,True,True]):
     """ Prepare sample for training.

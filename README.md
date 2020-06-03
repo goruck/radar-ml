@@ -8,6 +8,8 @@ Radar-based object detection has certain advantages over camera-based methods, i
 
 [Vayyar's](https://vayyar.com/) radar in the [Walabot](https://api.walabot.com/) reference design is used in this project. An object detection model running on Google's Coral [Edge Tensor Processing Unit (TPU)](https://coral.ai/) is used to ground truth radar observations in real-time which are in turn used to train a Support-Vector Machine (SVM) model.
 
+See the companion Medium article, [Teaching Radar to Understand the Home](https://towardsdatascience.com/teaching-radar-to-understand-the-home-ee78e7e4a0be), for additional information. 
+
 # Training Setup
 A photo of the hardware created for this project is shown below. The Walabot radar is mounted up front and horizontally with a camera located at its top center. The white box contains the Google Coral Edge TPU with the camera connected to it over USB and the black box contains a Raspberry Pi 4 with the radar connected to it over another USB.
 

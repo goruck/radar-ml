@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='detection_server',
   syntax='proto3',
   serialized_options=None,
-  serialized_pb=b'\n\x16\x64\x65tection_server.proto\x12\x10\x64\x65tection_server\"\x90\x02\n\x0e\x44\x65tectedObject\x12\r\n\x05label\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\x0c\n\x04\x61rea\x18\x03 \x01(\x02\x12;\n\x08\x63\x65ntroid\x18\x04 \x01(\x0b\x32).detection_server.DetectedObject.Centroid\x12\x33\n\x04\x62\x62ox\x18\x05 \x01(\x0b\x32%.detection_server.DetectedObject.BBox\x1a \n\x08\x43\x65ntroid\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x1a>\n\x04\x42\x42ox\x12\x0c\n\x04xmin\x18\x01 \x01(\x02\x12\x0c\n\x04ymin\x18\x02 \x01(\x02\x12\x0c\n\x04xmax\x18\x03 \x01(\x02\x12\x0c\n\x04ymax\x18\x04 \x01(\x02\"D\n\x12\x44\x65tectedObjectData\x12.\n\x04\x64\x61ta\x18\x01 \x03(\x0b\x32 .detection_server.DetectedObject\"1\n\x10\x43\x61meraResolution\x12\r\n\x05width\x18\x01 \x01(\x05\x12\x0e\n\x06height\x18\x02 \x01(\x05\"K\n\x19\x43\x61meraIntrinsicParameters\x12\n\n\x02\x66x\x18\x01 \x01(\x02\x12\n\n\x02\x66y\x18\x02 \x01(\x02\x12\n\n\x02\x63x\x18\x03 \x01(\x02\x12\n\n\x02\x63y\x18\x04 \x01(\x02\"\x07\n\x05\x45mpty2\xa6\x02\n\x0f\x44\x65tectionServer\x12U\n\x12GetDetectedObjects\x12\x17.detection_server.Empty\x1a$.detection_server.DetectedObjectData\"\x00\x12T\n\x13GetCameraResolution\x12\x17.detection_server.Empty\x1a\".detection_server.CameraResolution\"\x00\x12\x66\n\x1cGetCameraIntrinsicParameters\x12\x17.detection_server.Empty\x1a+.detection_server.CameraIntrinsicParameters\"\x00\x62\x06proto3'
+  serialized_pb=b'\n\x16\x64\x65tection_server.proto\x12\x10\x64\x65tection_server\"\x90\x02\n\x0e\x44\x65tectedObject\x12\r\n\x05label\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\x0c\n\x04\x61rea\x18\x03 \x01(\x02\x12;\n\x08\x63\x65ntroid\x18\x04 \x01(\x0b\x32).detection_server.DetectedObject.Centroid\x12\x33\n\x04\x62\x62ox\x18\x05 \x01(\x0b\x32%.detection_server.DetectedObject.BBox\x1a \n\x08\x43\x65ntroid\x12\t\n\x01x\x18\x01 \x01(\x02\x12\t\n\x01y\x18\x02 \x01(\x02\x1a>\n\x04\x42\x42ox\x12\x0c\n\x04xmin\x18\x01 \x01(\x02\x12\x0c\n\x04ymin\x18\x02 \x01(\x02\x12\x0c\n\x04xmax\x18\x03 \x01(\x02\x12\x0c\n\x04ymax\x18\x04 \x01(\x02\"D\n\x12\x44\x65tectedObjectData\x12.\n\x04\x64\x61ta\x18\x01 \x03(\x0b\x32 .detection_server.DetectedObject\"1\n\x10\x43\x61meraResolution\x12\r\n\x05width\x18\x01 \x01(\x05\x12\x0e\n\x06height\x18\x02 \x01(\x05\"K\n\x19\x43\x61meraIntrinsicParameters\x12\n\n\x02\x66x\x18\x01 \x01(\x02\x12\n\n\x02\x66y\x18\x02 \x01(\x02\x12\n\n\x02\x63x\x18\x03 \x01(\x02\x12\n\n\x02\x63y\x18\x04 \x01(\x02\"\x07\n\x05\x45mpty\"\x1f\n\rDesiredLabels\x12\x0e\n\x06labels\x18\x01 \x03(\t2\xae\x02\n\x0f\x44\x65tectionServer\x12]\n\x12GetDetectedObjects\x12\x1f.detection_server.DesiredLabels\x1a$.detection_server.DetectedObjectData\"\x00\x12T\n\x13GetCameraResolution\x12\x17.detection_server.Empty\x1a\".detection_server.CameraResolution\"\x00\x12\x66\n\x1cGetCameraIntrinsicParameters\x12\x17.detection_server.Empty\x1a+.detection_server.CameraIntrinsicParameters\"\x00\x62\x06proto3'
 )
 
 
@@ -315,6 +315,37 @@ _EMPTY = _descriptor.Descriptor(
   serialized_end=524,
 )
 
+
+_DESIREDLABELS = _descriptor.Descriptor(
+  name='DesiredLabels',
+  full_name='detection_server.DesiredLabels',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='labels', full_name='detection_server.DesiredLabels.labels', index=0,
+      number=1, type=9, cpp_type=9, label=3,
+      has_default_value=False, default_value=[],
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=526,
+  serialized_end=557,
+)
+
 _DETECTEDOBJECT_CENTROID.containing_type = _DETECTEDOBJECT
 _DETECTEDOBJECT_BBOX.containing_type = _DETECTEDOBJECT
 _DETECTEDOBJECT.fields_by_name['centroid'].message_type = _DETECTEDOBJECT_CENTROID
@@ -325,6 +356,7 @@ DESCRIPTOR.message_types_by_name['DetectedObjectData'] = _DETECTEDOBJECTDATA
 DESCRIPTOR.message_types_by_name['CameraResolution'] = _CAMERARESOLUTION
 DESCRIPTOR.message_types_by_name['CameraIntrinsicParameters'] = _CAMERAINTRINSICPARAMETERS
 DESCRIPTOR.message_types_by_name['Empty'] = _EMPTY
+DESCRIPTOR.message_types_by_name['DesiredLabels'] = _DESIREDLABELS
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 DetectedObject = _reflection.GeneratedProtocolMessageType('DetectedObject', (_message.Message,), {
@@ -378,6 +410,13 @@ Empty = _reflection.GeneratedProtocolMessageType('Empty', (_message.Message,), {
   })
 _sym_db.RegisterMessage(Empty)
 
+DesiredLabels = _reflection.GeneratedProtocolMessageType('DesiredLabels', (_message.Message,), {
+  'DESCRIPTOR' : _DESIREDLABELS,
+  '__module__' : 'detection_server_pb2'
+  # @@protoc_insertion_point(class_scope:detection_server.DesiredLabels)
+  })
+_sym_db.RegisterMessage(DesiredLabels)
+
 
 
 _DETECTIONSERVER = _descriptor.ServiceDescriptor(
@@ -386,15 +425,15 @@ _DETECTIONSERVER = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   serialized_options=None,
-  serialized_start=527,
-  serialized_end=821,
+  serialized_start=560,
+  serialized_end=862,
   methods=[
   _descriptor.MethodDescriptor(
     name='GetDetectedObjects',
     full_name='detection_server.DetectionServer.GetDetectedObjects',
     index=0,
     containing_service=None,
-    input_type=_EMPTY,
+    input_type=_DESIREDLABELS,
     output_type=_DETECTEDOBJECTDATA,
     serialized_options=None,
   ),

@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 # grpc detection server address.
 #DETECT_SERVER_IP = '192.168.1.131:50051'
 DETECT_SERVER_IP = '10.0.0.20:50051'
+# Desired labels from detection server.
+# These must be a subset of all class labels. 
+DESIRED_LABELS = ['person', 'dog', 'cat']
 
 # If radar unit is placed with usb facing right then set True.
 # Else set false if radar is placed with usb facing bottom.
@@ -131,7 +134,7 @@ def get_camera_intrinsic_parameters(stub):
 
 def get_detected_objects(stub):
     """ Get detected objects from gprc detection server. """
-    request = detection_server_pb2.Empty()
+    request = detection_server_pb2.DesiredLabels(labels=DESIRED_LABELS)
     try:
         response = stub.GetDetectedObjects(request)
     except grpc.RpcError as err:

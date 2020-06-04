@@ -15,7 +15,7 @@ class DetectionServerStub(object):
         """
         self.GetDetectedObjects = channel.unary_unary(
                 '/detection_server.DetectionServer/GetDetectedObjects',
-                request_serializer=detection__server__pb2.Empty.SerializeToString,
+                request_serializer=detection__server__pb2.DesiredLabels.SerializeToString,
                 response_deserializer=detection__server__pb2.DetectedObjectData.FromString,
                 )
         self.GetCameraResolution = channel.unary_unary(
@@ -57,7 +57,7 @@ def add_DetectionServerServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'GetDetectedObjects': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDetectedObjects,
-                    request_deserializer=detection__server__pb2.Empty.FromString,
+                    request_deserializer=detection__server__pb2.DesiredLabels.FromString,
                     response_serializer=detection__server__pb2.DetectedObjectData.SerializeToString,
             ),
             'GetCameraResolution': grpc.unary_unary_rpc_method_handler(
@@ -91,7 +91,7 @@ class DetectionServer(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/detection_server.DetectionServer/GetDetectedObjects',
-            detection__server__pb2.Empty.SerializeToString,
+            detection__server__pb2.DesiredLabels.SerializeToString,
             detection__server__pb2.DetectedObjectData.FromString,
             options, channel_credentials,
             call_credentials, compression, wait_for_ready, timeout, metadata)

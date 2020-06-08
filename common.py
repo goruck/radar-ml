@@ -34,6 +34,9 @@ XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
 # Label encoder name.
 LABELS = 'train-results/radar_labels.pickle'
 
+# Radar 2-D projections to use for predictions.
+ProjMask = namedtuple('ProjMask', ['xy', 'xz', 'yz'])
+
 class DerivedTarget(namedtuple('DerivedTarget', ['xPosCm', 'yPosCm', 'zPosCm',
                                'amplitude','i', 'j', 'k'])):
     """ Radar targets. Replaces Walabot getSensorTargets(). """
@@ -112,7 +115,7 @@ def calculate_matrix_indices(x, y, z, size_x, size_y, size_z):
     k = int((r - R_MIN) * (size_z - 1) / (R_MAX - R_MIN))
     return (i, j, k)
 
-def process_samples(samples, proj_mask=(True,True,True)):
+def process_samples(samples, proj_mask=ProjMask(xy=True,xz=True,yz=True)):
     """ Prepare sample for training.
 
     Choose projection(s) to use for train and scale.

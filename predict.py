@@ -19,8 +19,7 @@ RADAR_THRESHOLD = 5
 MTI = True
 
 # Radar 2-D projections to use for predictions.
-# (x-y, x-z, y-z)
-PROJ_MASK = (True, True, True)
+PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 
 # Load classifier along with the label encoder.
 with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:

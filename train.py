@@ -34,9 +34,8 @@ RANDOM_SEED = 1234
 FOLDS = 5
 # Number of parameters to combine for xgb random search. 
 PARA_COMB = 20
-# Radar 2-D projections to use for training.
-# (x-y, x-z, y-z)
-PROJ_MASK = (True, True, True)
+# Radar 2-D projections to use for predictions.
+PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """ Generate model confusion matrix and classification report. """

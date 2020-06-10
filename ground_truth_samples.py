@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 DETECT_SERVER_IP = '10.0.0.20:50051'
 # Desired labels from detection server.
 # These must be a subset of all class labels. 
-DESIRED_LABELS = ['person', 'dog', 'cat']
+DESIRED_LABELS = ['dog', 'cat']
 
 # If radar unit is placed with usb facing right then set True.
 # Else set false if radar is placed with usb facing bottom.
@@ -38,8 +38,9 @@ RADAR_THRESHOLD = 5
 MTI = True
 
 # Offset between camera and radar physical centers in cm.
-CAMERA_X_OFFSET = 0.0
-CAMERA_Y_OFFSET = 5.0
+CAMERA_X_OFFSET = 1.13
+CAMERA_Y_OFFSET = 5.08
+CAMERA_Z_OFFSET = -1.2
 
 # Threshold for match between radar and camera detected object.
 # Defined as a percentage of radar target depth. 
@@ -48,7 +49,7 @@ DETECTION_THRESHOLD_PERCENT = 0.25
 #MAX_TARGET_OBJECT_DISTANCE = 20.0
 
 # Minimum detection score to qualify as ground truth. 
-MIN_DETECTED_OBJECT_SCORE = 0.60
+MIN_DETECTED_OBJECT_SCORE = 0.50
 
 LOG_FILE = 'ground_truth_samples.log'
 
@@ -90,15 +91,15 @@ def convert_coordinates(camera_point, target_z, fx, fy, cx, cy):
         cx, cy (float, float): calibrated x and y of camera's principal point in pixels.
 
     Returns:
-        (radar_x, radar_y) (float, float): camera point in radar coordinate system.
+        (radar_x, radar_y) (float, float): camera point in radar coord system. Units cm.
     """
 
     # Point in camera coordinate system.
     cam_x, cam_y = camera_point
     
     # Same point in world coordinates. 
-    world_x = (cam_x - cx) * target_z / fx
-    world_y = (cam_y - cy) * target_z / fy
+    world_x = (cam_x - cx) * (target_z - CAMERA_Z_OFFSET) / fx
+    world_y = (cam_y - cy) * (target_z - CAMERA_Z_OFFSET) / fy
 
     # Rotate and translate to convert point from world to radar coordinates.
     if RADAR_HORIZONTAL:
@@ -486,7 +487,7 @@ if __name__ == '__main__':
     logging.basicConfig(filename=os.path.join(common.PRJ_DIR, LOG_FILE),
         filemode='w',
         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-        level=logging.INFO)
+        level=logging.DEBUG)
 
     radar.Init()
 
@@ -533,6 +534,8 @@ if __name__ == '__main__':
 
     frame_rate = radar.GetAdvancedParameter('FrameRate')
     logger.info(f'radar frame rate: {frame_rate}')
+
+    logger.debug(f'desired labels: {DESIRED_LABELS}')
 
     samples, labels = plot_and_capture_data(args.num_samples, args.realtime_plot,
         args.save_plot, args.save_plot_path)

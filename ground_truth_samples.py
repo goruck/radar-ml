@@ -355,7 +355,7 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
                 # raw_image ordering: (theta, phi, r)
                 raw_image, size_x, size_y, size_z, _ = radar.GetRawImage()
                 raw_image_np = np.array(raw_image, dtype=np.float32)
-                logger.debug(f'raw image np shape: {raw_image_np.shape}')
+                logger.debug(f'Raw image np shape: {raw_image_np.shape}')
 
                 #targets = get_derived_targets(raw_image_np, size_x, size_y, size_z)
 
@@ -375,30 +375,31 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
                     # This is used as a threshold to declare correspondence. 
                     current_distance = DETECTION_THRESHOLD_PERCENT * target.zPosCm
                     #current_distance = MAX_TARGET_OBJECT_DISTANCE
-                    logger.debug(f'initial threshold: {current_distance:.1f} (cm)')
+                    logger.debug(f'Initial threshold: {current_distance:.1f} (cm)')
 
                     target_object_close = False
 
                     for obj in detected_objects:
                         if obj.score < MIN_DETECTED_OBJECT_SCORE:
-                            logger.debug(f'Object "{obj.label}" score too low...skipping.')
+                            logger.debug(f'Object ({obj.label}) score ({obj.score:.1f}) too low...skipping.')
                             continue
 
                         # Convert position of detected object's centroid to radar coordinate system.
                         centroid_camera = (width*obj.centroid.x, height*obj.centroid.y)
-                        logger.debug(f'centroid camera: {centroid_camera}')
+                        logger.debug(f'Centroid camera: {centroid_camera}')
                         centroid_radar = convert_coordinates(centroid_camera,
                             target.zPosCm, fx, fy, cx, cy)
-                        logger.debug(f'centroid radar: {centroid_radar}')
+                        logger.debug(f'Centroid radar: {centroid_radar}')
 
                         # Calculate distance between detected object and radar target. 
                         distance = compute_distance((target.xPosCm, target.yPosCm), centroid_radar)
-                        logger.debug(f'distance: {distance}')
+                        logger.debug(f'Distance: {distance}')
 
                         # Find the detected object closest to the radar target.
                         if distance < current_distance:
                             target_object_close = True
                             current_distance = distance
+                            current_score = obj.score
                             target_name = obj.label
                             target_position = target.xPosCm, target.yPosCm, target.zPosCm
                             centroid_position = centroid_radar
@@ -413,24 +414,24 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
                             #
                             # projection_yz is the 2D projection of target in y-z plane.
                             projection_yz = raw_image_np[i,:,:]
-                            logger.debug(f'projection_yz shape: {projection_yz.shape}')
+                            logger.debug(f'Projection_yz shape: {projection_yz.shape}')
                             # projection_xz is the 2D projection of target in x-z plane.
                             projection_xz = raw_image_np[:,j,:]
-                            logger.debug(f'projection_xz shape: {projection_xz.shape}')
+                            logger.debug(f'Projection_xz shape: {projection_xz.shape}')
                             # projection_xy is 2D projection of target signal in x-y plane.
                             projection_xy = raw_image_np[:,:,k]
-                            logger.debug(f'projection_xy shape: {projection_xy.shape}')
+                            logger.debug(f'Projection_xy shape: {projection_xy.shape}')
                         else:
                             msg = (
-                                f'Found "{obj.label}" {distance:.1f} (cm) too far from target'
-                                f' at z {target.zPosCm:.1f} (cm)...skipping.'
+                                f'Found "{obj.label}" with score {obj.score:.1f} at {distance:.1f} (cm)'
+                                f' too far from target at z {target.zPosCm:.1f} (cm)...skipping.'
                             )
                             logger.info(msg)
 
                     if target_object_close:
                         msg = (
-                            f'Found "{target_name}" {current_distance:.1f} (cm) close to target'
-                            f' at z {target.zPosCm:.1f} (cm)...storing'
+                            f'Found "{target_name}" with score {current_score:.1f} at {distance:.1f} (cm)'
+                            f' from target at z {target.zPosCm:.1f} (cm)...storing.'
                         )
                         logger.info(msg)
 

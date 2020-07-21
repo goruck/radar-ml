@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 #DETECT_SERVER_IP = '192.168.1.131:50051'
 DETECT_SERVER_IP = '10.0.0.20:50051'
 # Desired labels from detection server.
-# These must be a subset of all class labels. 
-DESIRED_LABELS = ['dog', 'cat']
+# These must be all or a subset of the class labels. 
+DESIRED_LABELS = ('person', 'polly', 'rebel')
 
 # If radar unit is placed with usb facing right then set True.
 # Else set false if radar is placed with usb facing bottom.
@@ -543,12 +543,16 @@ if __name__ == '__main__':
 
     # Append data file if it already exists, else create a new one.
     if samples and labels:
+        logger.info(f'Captured {len(labels)} new samples with label(s) {set(labels)}.')
         try:
             with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
                 logger.info('Appending existing data file.')
                 existing_data = pickle.load(fp)
-                samples = np.vstack((existing_data['samples'], samples))
-                labels = existing_data['labels'] + labels
+                existing_samples = existing_data['samples']
+                existing_labels = existing_data['labels']
+                logger.info(f'Found {len(existing_labels)} samples with label(s) {set(existing_labels)}.')
+                samples = np.vstack((existing_samples, samples))
+                labels = existing_labels + labels
         except ValueError:
             logger.error(f'Error while trying to append data file, exiting.')
             exit(1)
@@ -558,7 +562,7 @@ if __name__ == '__main__':
             data = {'samples': samples, 'labels': labels}
             logger.debug(f'Data dump:\n{data}')
             with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'wb') as fp:
-                logger.info(f'Saving data file with labels {set(labels)}.')
+                logger.info('Saving data file.')
                 fp.write(pickle.dumps(data))
     else:
         logger.info(f'No data was captured.')

@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 # grpc detection server address.
 #DETECT_SERVER_IP = '192.168.1.131:50051'
 DETECT_SERVER_IP = '10.0.0.20:50051'
-# Desired labels from detection server.
-# These must be all or a subset of the class labels. 
-DESIRED_LABELS = ('person', 'polly', 'rebel')
 
 # If radar unit is placed with usb facing right then set True.
 # Else set false if radar is placed with usb facing bottom.
@@ -133,9 +130,9 @@ def get_camera_intrinsic_parameters(stub):
         logger.error('{}, {}'.format(err.code().name, err.code().value)) #pylint: disable=no-member
         exit(1)
 
-def get_detected_objects(stub):
+def get_detected_objects(stub, desired_labels):
     """ Get detected objects from gprc detection server. """
-    request = detection_server_pb2.DesiredLabels(labels=DESIRED_LABELS)
+    request = detection_server_pb2.DesiredLabels(labels=desired_labels)
     try:
         response = stub.GetDetectedObjects(request)
     except grpc.RpcError as err:
@@ -160,7 +157,7 @@ def get_detected_objects(stub):
         )
     return [make(obj) for (fd,v) in response.ListFields() for obj in v if obj.label != '']
 
-def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path):
+def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path, desired_labels):
     def pol_2_cart_deg(a, r):
         ''' Convert polar coordinates, in degrees, to cartesian. '''
         a_rad = np.deg2rad(a)
@@ -342,7 +339,7 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
                 radar.Trigger()
 
                 # Get object detection results from server (if any). 
-                detected_objects = get_detected_objects(stub)
+                detected_objects = get_detected_objects(stub, desired_labels)
                 if not detected_objects:
                     continue
 
@@ -470,10 +467,17 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path)
     return samples, labels
 
 if __name__ == '__main__':
+    # Desired labels from detection server.
+    # These must be all or a subset of the class labels. 
+    default_desired_labels = ['person', 'dog', 'cat']
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_samples', type=int,
         help='number of samples to capture',
         default=500)
+    parser.add_argument('--desired_labels', nargs='+', type=str,
+        help='Labels to use from detection server.',
+        default=default_desired_labels)
     parser.add_argument('--realtime_plot', action='store_true',
         help='plot radar results in real-time')
     parser.add_argument('--save_plot', action='store_true',
@@ -536,10 +540,10 @@ if __name__ == '__main__':
     frame_rate = radar.GetAdvancedParameter('FrameRate')
     logger.info(f'radar frame rate: {frame_rate}')
 
-    logger.debug(f'desired labels: {DESIRED_LABELS}')
+    logger.info(f'desired labels: {args.desired_labels}')
 
     samples, labels = plot_and_capture_data(args.num_samples, args.realtime_plot,
-        args.save_plot, args.save_plot_path)
+        args.save_plot, args.save_plot_path, args.desired_labels)
 
     # Append data file if it already exists, else create a new one.
     if samples and labels:

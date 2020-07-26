@@ -485,6 +485,9 @@ if __name__ == '__main__':
     parser.add_argument('--save_plot_path', type=str,
         help='radar plot movie file name',
         default=os.path.join(common.PRJ_DIR, 'ground-truth-samples.mp4'))
+    parser.add_argument('--logging_level', type=str,
+        help='logging level, "info" or "debug"',
+        default='info')
     parser.set_defaults(realtime_plot=False)
     parser.set_defaults(save_plot=False)
     args = parser.parse_args()
@@ -492,7 +495,7 @@ if __name__ == '__main__':
     logging.basicConfig(filename=os.path.join(common.PRJ_DIR, LOG_FILE),
         filemode='w',
         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-        level=logging.DEBUG)
+        level=logging.DEBUG if args.logging_level=='debug' else logging.INFO)
 
     radar.Init()
 

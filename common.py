@@ -6,8 +6,9 @@ Copyright (c) 2020 Lindo St. Angel.
 
 import WalabotAPI as radar
 import numpy as np
-from collections import namedtuple
-from sklearn.preprocessing import maxabs_scale
+import scipy.ndimage
+import collections
+import sklearn.preprocessing
 
 # Radar scan arena in spherical (r-Θ-Φ) coordinates from radar unit origin.
 # Radial distance (R) is along the Z axis. In cm.
@@ -35,10 +36,13 @@ XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
 LABELS = 'train-results/radar_labels.pickle'
 
 # Radar 2-D projections to use for predictions.
-ProjMask = namedtuple('ProjMask', ['xy', 'xz', 'yz'])
+ProjMask = collections.namedtuple('ProjMask', ['xy', 'xz', 'yz'])
 
-class DerivedTarget(namedtuple('DerivedTarget', ['xPosCm', 'yPosCm', 'zPosCm',
-                               'amplitude','i', 'j', 'k'])):
+# Radar 2-D projection zoom factors.
+ProjZoom = collections.namedtuple('ProjZoom', ['xy', 'xz', 'yz'])
+
+class DerivedTarget(collections.namedtuple('DerivedTarget',
+    ['xPosCm', 'yPosCm', 'zPosCm', 'amplitude','i', 'j', 'k'])):
     """ Radar targets. Replaces Walabot getSensorTargets(). """
     @staticmethod
     def get_derived_targets(radar_data, size_x, size_y, size_z, num_targets=1):
@@ -115,23 +119,29 @@ def calculate_matrix_indices(x, y, z, size_x, size_y, size_z):
     k = int((r - R_MIN) * (size_z - 1) / (R_MAX - R_MIN))
     return (i, j, k)
 
-def process_samples(samples, proj_mask=ProjMask(xy=True,xz=True,yz=True)):
-    """ Prepare sample for training.
+def process_samples(samples, proj_mask=ProjMask(xy=True,xz=True,yz=True),
+    proj_zoom=ProjZoom(xy=[1.0, 1.0],xz=[1.0, 1.0],yz=[1.0, 1.0])):
+    """ Prepare samples for training or predictions.
 
-    Choose projection(s) to use for train and scale.
+    Get projections of interest, zoom them to fit a radar arena then scale and flatten.
+
+    Note zoom is usually used to size new samples into a different sized radar arena from
+    that used for training. This is useful to use a common ml model across applications. 
 
     Args:
-        samples (list of tuple of projections): Observations.
-        proj_mask (tuple of bools): Projection(s) to use (x-y, y-z, x-z)
+        samples (list of tuples of np arrays): Observation samples of radar projections.
+        proj_mask (tuple of bools): Projection(s) to use (x-y, y-z, x-z).
+        proj_zoom (tuple of list of floats): Projection zoom factors (x-y, y-z, x-z).
 
     Returns:
         np.array: processed samples
     """
     def make(t):
-        # Use only projections of interest.
-        wanted_projections = tuple(p for i, p in enumerate(t) if proj_mask[i])
+        # Get projections of interest and zoom them.
+        wanted_projections = tuple(scipy.ndimage.zoom(p, proj_zoom[i])
+            for i, p in enumerate(t) if proj_mask[i])
         # Concatenate into a flattened feature vector.
         concat_projections = np.concatenate(wanted_projections, axis=None)
         # Scale features to the [-1, 1] range.
-        return maxabs_scale(concat_projections, axis=0, copy=True)
+        return sklearn.preprocessing.maxabs_scale(concat_projections, axis=0, copy=True)
     return np.array([make(t) for t in samples])

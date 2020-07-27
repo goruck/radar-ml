@@ -21,14 +21,28 @@ MTI = True
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 
-# Load classifier along with the label encoder.
-with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
-    model = pickle.load(fp)
-with open(path.join(common.PRJ_DIR, common.LABELS), 'rb') as fp:
-    le = pickle.load(fp)
+def calc_proj_zoom(train_size_x, train_size_y, train_size_z,
+    size_x, size_y, size_z):
+    """ Calculate projection zoom factors for prediction radar arena.
 
-def classifier(observation, min_proba=0.98):
-    # perform classification on a single radar image.
+    Args:
+        train_size_{x,y,z} (int): Size of image array used for training.
+        size_{x,y,z} (int): Size of sample image array.
+
+    Returns:
+        ProjZoom (tuple of list of floats): Zoom factors per projection.
+    """
+
+    xy_zoom = [train_size_x / size_x, train_size_y / size_y]
+    xz_zoom = [train_size_x / size_x, train_size_z / size_z]
+    yz_zoom = [train_size_y / size_y, train_size_z / size_z]
+    #print(f'zoom: {xy_zoom}, {xz_zoom}, {yz_zoom}')
+
+    return common.ProjZoom(xy=xy_zoom, xz=xz_zoom, yz=yz_zoom)
+
+def classifier(observation, model, le, min_proba=0.98):
+    """ Perform classification on a single radar image. """
+
     # note: reshape(1,-1) converts 1D array into 2D
     preds = model.predict_proba(observation.reshape(1, -1))[0]
     j = np.argmax(preds)
@@ -43,6 +57,12 @@ def classifier(observation, min_proba=0.98):
     return name, proba
 
 def main():
+    # Load classifier along with the label encoder.
+    with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
+        model = pickle.load(fp)
+    with open(path.join(common.PRJ_DIR, common.LABELS), 'rb') as fp:
+        le = pickle.load(fp)
+
     radar.Init()
 
     # Configure Walabot database install location.
@@ -77,6 +97,11 @@ def main():
     if not MTI:
         common.calibrate()
 
+    # Calculate size of radar image data array used for training. 
+    train_size_z = int((common.R_MAX - common.R_MIN) / common.R_RES) + 1
+    train_size_y = int((common.PHI_MAX - common.PHI_MIN) / common.PHI_RES) + 1
+    train_size_x = int((common.THETA_MAX - common.THETA_MIN) / common.THETA_RES) + 1
+
     try:
         while True:
             # Scan according to profile and record targets.
@@ -106,12 +131,16 @@ def main():
                 # projection_xy is 2D projection of target signal in x-y plane.
                 projection_xy = raw_image_np[:,:,k]
 
+                proj_zoom = calc_proj_zoom(train_size_x, train_size_y, train_size_z,
+                    size_x, size_y, size_z)
+
                 observation = common.process_samples(
                     [(projection_xy, projection_yz, projection_xz)],
-                    proj_mask=PROJ_MASK)
+                    proj_mask=PROJ_MASK,
+                    proj_zoom=proj_zoom)
 
                 # Make a prediction. 
-                name, prob = classifier(observation)
+                name, prob = classifier(observation, model, le)
                 if name == 'person':
                     color_name = colored(name, 'green')
                 elif name == 'dog':

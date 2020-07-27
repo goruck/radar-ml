@@ -141,15 +141,7 @@ def main():
 
                 # Make a prediction. 
                 name, prob = classifier(observation, model, le)
-                if name == 'person':
-                    color_name = colored(name, 'green')
-                elif name == 'dog':
-                    color_name = colored(name, 'yellow')
-                elif name == 'cat':
-                    color_name = colored(name, 'blue')
-                else:
-                    color_name = colored(name, 'red')
-                print(f'Detected {color_name} with probability {prob}\n')
+                print(f'Detected {name} with probability {prob}\n')
     except KeyboardInterrupt:
         pass
     finally:

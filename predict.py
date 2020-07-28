@@ -33,12 +33,15 @@ def calc_proj_zoom(train_size_x, train_size_y, train_size_z,
         ProjZoom (tuple of list of floats): Zoom factors per projection.
     """
 
-    xy_zoom = [train_size_x / size_x, train_size_y / size_y]
-    xz_zoom = [train_size_x / size_x, train_size_z / size_z]
-    yz_zoom = [train_size_y / size_y, train_size_z / size_z]
-    #print(f'zoom: {xy_zoom}, {xz_zoom}, {yz_zoom}')
+    x_zoom = train_size_x / size_x
+    y_zoom = train_size_y / size_y
+    z_zoom = train_size_z / size_z
+    #print(f'zoom: {x_zoom}, {y_zoom}, {z_zoom}')
 
-    return common.ProjZoom(xy=xy_zoom, xz=xz_zoom, yz=yz_zoom)
+    return common.ProjZoom(
+        xy=[x_zoom, y_zoom],
+        xz=[x_zoom, z_zoom],
+        yz=[y_zoom, z_zoom])
 
 def classifier(observation, model, le, min_proba=0.98):
     """ Perform classification on a single radar image. """
@@ -79,9 +82,13 @@ def main():
     radar.SetProfile(common.RADAR_PROFILE)
 
     # Set scan arena in polar coords
-    radar.SetArenaR(common.R_MIN, common.R_MAX, common.R_RES)
-    radar.SetArenaPhi(common.PHI_MIN, common.PHI_MAX, common.PHI_RES)
-    radar.SetArenaTheta(common.THETA_MIN, common.THETA_MAX, common.THETA_RES)
+    # This can be different than arena used for training. 
+    R_MIN, R_MAX, R_RES = 15, 331, 4
+    THETA_MIN, THETA_MAX, THETA_RES = -40, 35, 8
+    PHI_MIN, PHI_MAX, PHI_RES = -27, 31, 4
+    radar.SetArenaR(R_MIN, R_MAX, R_RES)
+    radar.SetArenaPhi(PHI_MIN, PHI_MAX, PHI_RES)
+    radar.SetArenaTheta(THETA_MIN, THETA_MAX, THETA_RES)
 
     # Threshold
     radar.SetThreshold(RADAR_THRESHOLD)
@@ -101,6 +108,7 @@ def main():
     train_size_z = int((common.R_MAX - common.R_MIN) / common.R_RES) + 1
     train_size_y = int((common.PHI_MAX - common.PHI_MIN) / common.PHI_RES) + 1
     train_size_x = int((common.THETA_MAX - common.THETA_MIN) / common.THETA_RES) + 1
+    #print(f'train_size: {train_size_x}, {train_size_y}, {train_size_z}')
 
     try:
         while True:
@@ -135,7 +143,7 @@ def main():
                     size_x, size_y, size_z)
 
                 observation = common.process_samples(
-                    [(projection_xy, projection_yz, projection_xz)],
+                    [(projection_xz, projection_yz, projection_xy)],
                     proj_mask=PROJ_MASK,
                     proj_zoom=proj_zoom)
 

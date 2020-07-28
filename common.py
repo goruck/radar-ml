@@ -36,10 +36,10 @@ XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
 LABELS = 'train-results/radar_labels.pickle'
 
 # Radar 2-D projections to use for predictions.
-ProjMask = collections.namedtuple('ProjMask', ['xy', 'xz', 'yz'])
+ProjMask = collections.namedtuple('ProjMask', ['xz', 'yz', 'xy'])
 
 # Radar 2-D projection zoom factors.
-ProjZoom = collections.namedtuple('ProjZoom', ['xy', 'xz', 'yz'])
+ProjZoom = collections.namedtuple('ProjZoom', ['xz', 'yz', 'xy'])
 
 class DerivedTarget(collections.namedtuple('DerivedTarget',
     ['xPosCm', 'yPosCm', 'zPosCm', 'amplitude','i', 'j', 'k'])):
@@ -119,8 +119,8 @@ def calculate_matrix_indices(x, y, z, size_x, size_y, size_z):
     k = int((r - R_MIN) * (size_z - 1) / (R_MAX - R_MIN))
     return (i, j, k)
 
-def process_samples(samples, proj_mask=ProjMask(xy=True,xz=True,yz=True),
-    proj_zoom=ProjZoom(xy=[1.0, 1.0],xz=[1.0, 1.0],yz=[1.0, 1.0])):
+def process_samples(samples, proj_mask=ProjMask(xz=True,yz=True,xy=True),
+    proj_zoom=ProjZoom(xz=[1.0, 1.0],yz=[1.0, 1.0],xy=[1.0, 1.0])):
     """ Prepare samples for training or predictions.
 
     Get projections of interest, zoom them to fit a radar arena then scale and flatten.
@@ -129,9 +129,9 @@ def process_samples(samples, proj_mask=ProjMask(xy=True,xz=True,yz=True),
     that used for training. This is useful to use a common ml model across applications. 
 
     Args:
-        samples (list of tuples of np arrays): Observation samples of radar projections.
-        proj_mask (tuple of bools): Projection(s) to use (x-y, y-z, x-z).
-        proj_zoom (tuple of list of floats): Projection zoom factors (x-y, y-z, x-z).
+        samples (list of tuples of np arrays): Samples of radar projections [(xz, yz, xy)].
+        proj_mask (tuple of bools): Projection(s) to use (xz, yz, xy).
+        proj_zoom (tuple of list of floats): Projection zoom factors (xz, yz, xy).
 
     Returns:
         np.array: processed samples

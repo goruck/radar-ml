@@ -9,7 +9,6 @@ import numpy as np
 import pickle
 import common
 from sklearn.svm import SVC
-from termcolor import colored
 from os import path
 from sys import exit
 

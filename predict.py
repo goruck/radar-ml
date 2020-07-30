@@ -16,6 +16,11 @@ from sys import exit
 RADAR_THRESHOLD = 5
 # Set to True if using Moving Target Identification (MTI) filter.
 MTI = True
+# Radar scan arena in polar coords.
+# This can be different than arena used for training. 
+R_MIN, R_MAX, R_RES = 15, 331, 4
+THETA_MIN, THETA_MAX, THETA_RES = -40, 35, 8
+PHI_MIN, PHI_MAX, PHI_RES = -27, 31, 4
 
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
@@ -81,10 +86,6 @@ def main():
     radar.SetProfile(common.RADAR_PROFILE)
 
     # Set scan arena in polar coords
-    # This can be different than arena used for training. 
-    R_MIN, R_MAX, R_RES = 15, 331, 4
-    THETA_MIN, THETA_MAX, THETA_RES = -40, 35, 8
-    PHI_MIN, PHI_MAX, PHI_RES = -27, 31, 4
     radar.SetArenaR(R_MIN, R_MAX, R_RES)
     radar.SetArenaPhi(PHI_MIN, PHI_MAX, PHI_RES)
     radar.SetArenaTheta(THETA_MIN, THETA_MAX, THETA_RES)

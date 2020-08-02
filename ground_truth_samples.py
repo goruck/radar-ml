@@ -524,7 +524,7 @@ if __name__ == '__main__':
     phi_min, phi_max, _ = radar.GetArenaPhi()
     logger.info(f'radar phi min: {phi_min}, phi max: {phi_max} (deg)')
     theta_min, theta_max, _ = radar.GetArenaTheta()
-    logger.info(f'radar theta min: {theta_min}, phi max: {theta_max} (deg)')
+    logger.info(f'radar theta min: {theta_min}, theta max: {theta_max} (deg)')
 
     # Threshold
     radar.SetThreshold(RADAR_THRESHOLD)

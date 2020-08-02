@@ -1,12 +1,20 @@
-*Work in progress*
-
 # radar-ml
 
-The goal of this project is to allow you to accurately detect (classify and localize) people, pets and objects using low-power millimeter-wave radar. You will see how self-supervised learning techniques, leveraging conventional camera-based object detection, can be used to generate radar-based detection models. Self-supervised learning is autonomous supervised learning. It is a representation learning approach that obviates the need for humans to label data. [1].
+Computer vision, leveraging commodity cameras, computing and machine learning algorithms, has revolutionized video tracking, object detection and face recognition. This has created massive value for businesses and their customers as well as some concerns about privacy and control of personal information.
 
-Radar-based object detection has certain advantages over camera-based methods, including increased user privacy, lower power consumption, zero-light operation and more sensor flexible placement. However, radar does not have the resolution of most camera-based systems and therefore may be challenged to distinguish objects that have very similar characteristics. More importantly, there are very few radar datasets which have been used to train widely available object classification or detection models. This is in stark contrast to the ubiquity of visual perception datasets and models.
+Radar-based recognition and localization of people and things in the home environment has certain advantages over computer vision, including increased user privacy, low power consumption, zero-light operation and more sensor flexible placement. It does suffer some drawbacks as compared to vision systems. For example, radar generally does not have the resolution of most camera-based systems and therefore may be challenged to distinguish objects that have very similar characteristics. Also, although the cost of radar is rapidly declining as automotive and industrial applications grow, it is still generally more expensive than cameras which have long ridden the coattails of mobile phone unit volumes. These factors have slowed its adoption for consumer applications. But more importantly, there are very few radar data sets that can be used to train or fine-tune machine learning models. This is in stark contrast to the ubiquity of computer vision data sets and models.
 
-[Vayyar's](https://vayyar.com/) radar in the [Walabot](https://api.walabot.com/) reference design is used in this project. An object detection model running on Google's Coral [Edge Tensor Processing Unit (TPU)](https://coral.ai/) is used to ground truth radar observations in real-time which are in turn used to train a Support-Vector Machine (SVM) model.
+In this article, you will learn how to accurately detect people, pets and objects using low-power millimeter-wave radar and will see how self-supervised learning, leveraging conventional camera-based object detection, can be used to generate radar-based detection models. Self-supervised learning is autonomous supervised learning. It is a representation learning approach that obviates the need for humans to label data [1].
+
+The steps to gather data using self-supervised learning, train and use a radar-based object detection model are as follows.
+
+- Arrange a camera and a radar sensor to share a common view of the environment.
+- Run the radar and a camera-based object detection system to gather information about targets in the environment.
+- Create ground truth observations from the radar when it senses targets at the same point in space as the object detector.
+- Train a machine learning model such as a Support-Vector Machine (SVM) on these observations and check that it has acceptable accuracy for your application.
+- Use the trained machine learning model to predict a novel radar target’s identity.
+
+Vayyar’s radar chip in the Walabot reference design is a great choice to develop these solutions given its flexibility and wide availability. An object detection model running on Google’s Coral Edge Tensor Processing Unit (TPU) is another great choice since it can perform inferences many times faster than the radar can scan for targets.
 
 See the companion Medium article, [Teaching Radar to Understand the Home](https://towardsdatascience.com/teaching-radar-to-understand-the-home-ee78e7e4a0be), for additional information. 
 
@@ -161,7 +169,9 @@ weighted avg       0.99      0.99      0.99       371
 
 ![Alt text](./train-results/svm_cm_xy.png?raw=true "al projections svm confusion matrix.")
 
-You can see that there is only a slight improvement for using all projections over just the x-y plane but the model training time and model size (10MB vs 1.6MB) are far worse. It does not seem to be worth using all views, at least for this particular dataset. 
+You can see that there is only a slight improvement for using all projections over just the x-y plane but the model training time and model size (10MB vs 1.6MB) are far worse. It does not seem to be worth using all views, at least for this particular dataset.
+
+The most recently trained model (which uses all projections) and data set can be found [here](https://drive.google.com/drive/folders/1y8twF6puPXvedXhsFhff45HlMawgHzcS). This model has the labels ‘person’, ‘polly’ and ‘rebel’, the latter two being the names of my dog and cat respectively. You can easily map these names to suit your own household. The model has an input vector of 10,011 features made up of 5,457 features from the Y-Z projection plane, 3,872 features from the X-Z plane and 682 features from the X-Y plane. The number of features in each plane are a function of the radar Arena size and resolution with the default training Arena yielding these numbers.
 
 # Making Predictions
 The Python module [predict.py](./predict.py) is used to illustrate how predictions are made on novel radar samples using the trained SVM model. You should make sure the radar Arena, Threshold, Filter Type and Profile are similar to what was used for training (samples from different size Arenas can be used but must be scaled appropriately). Additionally, the observations need to be constructed from the same orthogonal planes as was used during training. 

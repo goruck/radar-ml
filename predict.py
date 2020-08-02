@@ -47,7 +47,7 @@ def calc_proj_zoom(train_size_x, train_size_y, train_size_z,
         xz=[x_zoom, z_zoom],
         yz=[y_zoom, z_zoom])
 
-def classifier(observation, model, le, min_proba=0.98):
+def classifier(observation, model, le, min_proba=0.7):
     """ Perform classification on a single radar image. """
 
     # note: reshape(1,-1) converts 1D array into 2D

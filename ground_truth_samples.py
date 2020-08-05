@@ -553,13 +553,16 @@ if __name__ == '__main__':
         logger.info(f'Captured {len(labels)} new samples with label(s) {set(labels)}.')
         try:
             with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
-                logger.info('Appending existing data file.')
                 existing_data = pickle.load(fp)
-                existing_samples = existing_data['samples']
-                existing_labels = existing_data['labels']
-                logger.info(f'Found {len(existing_labels)} samples with label(s) {set(existing_labels)}.')
-                samples = np.vstack((existing_samples, samples))
-                labels = existing_labels + labels
+
+            msg = (
+                f'Appending existing data file.\n'
+                f'It has {len(existing_data["labels"])} samples'
+                f' with label(s) {set(existing_data["labels"])}.'
+            )
+            logger.info(msg)
+            samples = np.vstack((existing_data['samples'], samples))
+            labels = existing_data['labels'] + labels
         except ValueError:
             logger.error(f'Error while trying to append data file, exiting.')
             exit(1)
@@ -570,7 +573,7 @@ if __name__ == '__main__':
             logger.debug(f'Data dump:\n{data}')
             with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'wb') as fp:
                 logger.info('Saving data file.')
-                fp.write(pickle.dumps(data))
+                pickle.dump(data, fp)
     else:
         logger.info(f'No data was captured.')
 

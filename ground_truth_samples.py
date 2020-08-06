@@ -580,5 +580,4 @@ if __name__ == '__main__':
     # Stop and Disconnect radar.
     radar.Stop()
     radar.Disconnect()
-    radar.Clean()
     logger.info('Successful radar shutdown.')

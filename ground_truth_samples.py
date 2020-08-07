@@ -556,8 +556,8 @@ if __name__ == '__main__':
                 existing_data = pickle.load(fp)
 
             msg = (
-                f'Appending existing data file.\n'
-                f'It has {len(existing_data["labels"])} samples'
+                f'Appending existing data file with new samples.'
+                f' Existing data file has {len(existing_data["labels"])} samples'
                 f' with label(s) {set(existing_data["labels"])}.'
             )
             logger.info(msg)

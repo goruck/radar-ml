@@ -8,21 +8,13 @@ import pickle
 import numpy as np
 import matplotlib.pyplot as plt
 import common
-from sklearn.preprocessing import LabelEncoder
-from sklearn.svm import SVC
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from sklearn.model_selection import train_test_split, StratifiedKFold
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.preprocessing import maxabs_scale, MaxAbsScaler
-from sklearn.utils import resample
-#from xgboost import XGBClassifier as xgb
-from itertools import product
-from collections import Counter
-from functools import reduce
-from os import path
-from sys import maxsize as SYS_MAXSIZE
-
-#np.set_printoptions(threshold=SYS_MAXSIZE)
+import sklearn as skl
+import itertools
+import collections
+import functools
+import os
+#import sys
+#np.set_printoptions(threshold=sys.maxsize)
 
 # Output SVM confusion matrix name.
 SVM_CM = 'train-results/svm_cm.png'
@@ -41,19 +33,19 @@ def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """ Generate model confusion matrix and classification report. """
     print('\n Evaluating model.')
     y_pred = model.predict(X_test)
-    cm = confusion_matrix(y_test, y_pred)
+    cm = skl.metrics.confusion_matrix(y_test, y_pred)
     print(f'\n Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
     cm_figure.savefig(path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
     print('\n Classification matrix:')
-    print(classification_report(y_test, y_pred, target_names=target_names))
+    print(skl.metrics.classification_report(y_test, y_pred, target_names=target_names))
     return
 
 def balance_classes(labels, data):
     """ balance classess """
     # Most common classes and their counts from the most common to the least.
-    c = Counter(labels)
+    c = collections.Counter(labels)
     mc = c.most_common()
 
     # Return if already balanced.
@@ -73,7 +65,7 @@ def balance_classes(labels, data):
     # Upsample data and label sets. 
     _, majority_size = mc[0]
     def upsample(samples):
-        return resample(
+        return skl.utils.resample(
             samples,
             replace=True,               # sample with replacement
             n_samples=majority_size,    # to match majority class
@@ -82,10 +74,10 @@ def balance_classes(labels, data):
     labels_upsampled = [upsample(label) for label in labels_list]
 
     # Recombine the separate, and now upsampled, label and data sets. 
-    data_balanced = reduce(lambda a, b: np.vstack((a, b)), data_upsampled)
-    labels_balanced = reduce(lambda a, b: np.concatenate((a, b)), labels_upsampled)
+    data_balanced = functools.reduce(lambda a, b: np.vstack((a, b)), data_upsampled)
+    labels_balanced = functools.reduce(lambda a, b: np.concatenate((a, b)), labels_upsampled)
 
-    c = Counter(labels_balanced)
+    c = collections.Counter(labels_balanced)
     mc = c.most_common()
 
     print(f'Balanced most common: {mc}')
@@ -135,7 +127,7 @@ def plot_confusion_matrix(cm, class_names):
 
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.
-    for i, j in product(range(cm.shape[0]), range(cm.shape[1])):
+    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
         color = "white" if cm[i, j] > threshold else "black"
         plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
 
@@ -154,9 +146,9 @@ def find_best_svm_estimator(X, y, cv, random_seed):
     param_grid = [
         {'C': Cs, 'kernel': ['linear']},
         {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}]
-    init_est = SVC(probability=True, class_weight='balanced',
+    init_est = skl.svm.SVC(probability=True, class_weight='balanced',
         random_state=random_seed, cache_size=1000, verbose=False)
-    grid_search = GridSearchCV(estimator=init_est,
+    grid_search = skl.model_selection.GridSearchCV(estimator=init_est,
         param_grid=param_grid, verbose=1, n_jobs=4, cv=cv)
     grid_search.fit(X, y)
     #print('\n All results:')
@@ -184,7 +176,7 @@ def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
         }
     init_est = xgb(learning_rate=0.02, n_estimators=600, objective='multi:softprob',
         verbose=1, n_jobs=1, random_state=random_seed)
-    random_search = RandomizedSearchCV(estimator=init_est,
+    random_search = skl.model_selection.RandomizedSearchCV(estimator=init_est,
         param_distributions=param_grid, n_iter=param_comb, n_jobs=4,
         cv=cv, verbose=1, random_state=random_seed)
     random_search.fit(X, y)
@@ -201,7 +193,7 @@ def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
 
 def main():
     # Load radar observations and labels. 
-    with open(path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
+    with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
         data_pickle = pickle.load(fp)
 
     print('Loading and scaling samples.')
@@ -211,7 +203,7 @@ def main():
 
     # Encode the labels.
     print('Encoding labels.')
-    le = LabelEncoder()
+    le = skl.preprocessing.LabelEncoder()
     encoded_labels = le.fit_transform(data_pickle['labels'])
     class_names = list(le.classes_)
     print(f'class names: {class_names}')
@@ -224,11 +216,11 @@ def main():
     plot_dataset(balanced_labels, plot_data)
 
     # Split data up into train and test sets.
-    (X_train, X_test, y_train, y_test) = train_test_split(
+    (X_train, X_test, y_train, y_test) = skl.model_selection.train_test_split(
         balanced_data, balanced_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
     #print('X_train: {} X_test: {} y_train: {} y_test: {}'.format(X_train, X_test, y_train, y_test))
 
-    skf = StratifiedKFold(n_splits=FOLDS)
+    skf = skl.model_selection.StratifiedKFold(n_splits=FOLDS)
 
     # Find best svm classifier, evaluate and then save it.
     best_svm = find_best_svm_estimator(X_train, y_train, skf.split(X_train, y_train), RANDOM_SEED)
@@ -236,7 +228,7 @@ def main():
     evaluate_model(best_svm, X_test, y_test, class_names, SVM_CM)
 
     print('\n Saving svm model...')
-    with open(path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
+    with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
         outfile.write(pickle.dumps(best_svm))
     """
     # Find best XGBoost classifier, evaluate and save it. 
@@ -246,12 +238,12 @@ def main():
     evaluate_model(best_xgb, X_test, y_test, class_names, XGB_CM)
 
     print('\n Saving xgb model...')
-    with open(path.join(common.PRJ_DIR, common.XGB_MODEL), 'wb') as outfile:
+    with open(os.path.join(common.PRJ_DIR, common.XGB_MODEL), 'wb') as outfile:
         outfile.write(pickle.dumps(best_xgb))
     """
     # Write the label encoder to disk.
     print('\n Saving label encoder.')
-    with open(path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
+    with open(os.path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
         outfile.write(pickle.dumps(le))
 
 if __name__ == '__main__':

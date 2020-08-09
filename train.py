@@ -13,6 +13,7 @@ import itertools
 import collections
 import functools
 import os
+#import xgboost as xgb
 #import sys
 #np.set_printoptions(threshold=sys.maxsize)
 
@@ -36,7 +37,7 @@ def evaluate_model(model, X_test, y_test, target_names, cm_name):
     cm = skl.metrics.confusion_matrix(y_test, y_pred)
     print(f'\n Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
-    cm_figure.savefig(path.join(common.PRJ_DIR, cm_name))
+    cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
     print('\n Classification matrix:')
     print(skl.metrics.classification_report(y_test, y_pred, target_names=target_names))
@@ -89,7 +90,7 @@ def balance_classes(labels, data):
 def plot_dataset(labels, data):
     plt.matshow(data.transpose(), fignum='all classes', aspect='auto')
 
-    c = Counter(labels)
+    c = collections.Counter(labels)
     mc = c.most_common()
 
     # Build a list of class indices from most common rankings. 
@@ -174,7 +175,7 @@ def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
         'colsample_bytree': [0.6, 0.8, 1.0],
         'max_depth': [3, 4, 5]
         }
-    init_est = xgb(learning_rate=0.02, n_estimators=600, objective='multi:softprob',
+    init_est = xgb.XGBClassifier(learning_rate=0.02, n_estimators=600, objective='multi:softprob',
         verbose=1, n_jobs=1, random_state=random_seed)
     random_search = skl.model_selection.RandomizedSearchCV(estimator=init_est,
         param_distributions=param_grid, n_iter=param_comb, n_jobs=4,

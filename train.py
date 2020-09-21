@@ -4,17 +4,22 @@ Train SVM- and XGB-based classifiers on radar data.
 Copyright (c) 2020 Lindo St. Angel
 """
 
+import os
+#import sys
+import collections
+import itertools
+import functools
 import pickle
+import random
+
 import numpy as np
 import matplotlib.pyplot as plt
-import common
-import sklearn as skl
-import itertools
-import collections
-import functools
-import os
+from sklearn import model_selection, metrics, preprocessing, utils, svm
+from scipy import ndimage
 #import xgboost as xgb
-#import sys
+
+import common
+
 #np.set_printoptions(threshold=sys.maxsize)
 
 # Output SVM confusion matrix name.
@@ -30,17 +35,67 @@ PARA_COMB = 20
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 
+class DataGenerator:
+    def __init__(self, rotation_range=None, zoom_range=None, noise_sd=None):
+        self.rotation_range = rotation_range
+        self.zoom_range = zoom_range
+        self.noise_sd = noise_sd
+
+    def flow(self, x, y, batch_size=32, save_to_dir=None, save_prefix='./datasets/augment'):
+        def augment(x_batch, y_batch):
+            aug_x = []
+            aug_y = []
+            for xb, yb in zip(x_batch, y_batch):
+                # Generate new tuple of rotated projections.
+                # Rotate each projection independenly.
+                if self.rotation_range is not None:
+                    new_t = tuple(ndimage.rotate(p, random.uniform(0, self.rotation_range))
+                            for p in xb)
+                    aug_x.append(new_t)
+                    aug_y.append(yb)
+                # Generate new tuple of zoomed projections.
+                # Use same zoom scale for all projections.
+                if self.zoom_range is not None:
+                    scale = random.uniform(1 - self.zoom_range, 1 + self.zoom_range)
+                    new_t = tuple(ndimage.zoom(p, scale) for p in xb)
+                    aug_x.append(new_t)
+                    aug_y.append(yb)
+                # Generate new tuple of projections with Gaussian noise.
+                # Add noise to each projection independently.
+                if self.noise_sd is not None:
+                    new_t = tuple(np.random.normal(p, self.noise_sd) for p in xb)
+                    aug_x.append(new_t)
+                    aug_y.append(yb)
+            return aug_x, aug_y
+
+        # Generate augmented data.
+        # Runs forever. Loop needs to be broken by calling function.
+        batch = 0
+        while True:
+            for pos in range(0, len(x), batch_size):
+                remaining = len(x) - pos
+                end = remaining if remaining < batch_size else batch_size
+                x_batch = x[pos:pos + end]
+                y_batch = y[pos:pos + end]
+                yield augment(x_batch, y_batch)
+                # Save augmented batches to disk if desired.
+                if save_to_dir is not None:
+                    fname = f'batch_{str(batch)}_{str(pos)}.pickle'
+                    with open(os.path.join(save_prefix, fname), 'wb') as fp:
+                        pickle.dump({'x_batch':x_batch, 'y_batch':y_batch}, fp)
+            batch += 1
+
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """ Generate model confusion matrix and classification report. """
     print('\n Evaluating model.')
     y_pred = model.predict(X_test)
-    cm = skl.metrics.confusion_matrix(y_test, y_pred)
+    cm = metrics.confusion_matrix(y_test, y_pred)
     print(f'\n Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
     cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
     print('\n Classification matrix:')
-    print(skl.metrics.classification_report(y_test, y_pred, target_names=target_names))
+    print(metrics.classification_report(y_test, y_pred, target_names=target_names))
     return
 
 def balance_classes(labels, data):
@@ -66,7 +121,7 @@ def balance_classes(labels, data):
     # Upsample data and label sets. 
     _, majority_size = mc[0]
     def upsample(samples):
-        return skl.utils.resample(
+        return utils.resample(
             samples,
             replace=True,               # sample with replacement
             n_samples=majority_size,    # to match majority class
@@ -147,9 +202,9 @@ def find_best_svm_estimator(X, y, cv, random_seed):
     param_grid = [
         {'C': Cs, 'kernel': ['linear']},
         {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}]
-    init_est = skl.svm.SVC(probability=True, class_weight='balanced',
+    init_est = svm.SVC(probability=True, class_weight='balanced',
         random_state=random_seed, cache_size=1000, verbose=False)
-    grid_search = skl.model_selection.GridSearchCV(estimator=init_est,
+    grid_search = model_selection.GridSearchCV(estimator=init_est,
         param_grid=param_grid, verbose=1, n_jobs=4, cv=cv)
     grid_search.fit(X, y)
     #print('\n All results:')
@@ -177,7 +232,7 @@ def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
         }
     init_est = xgb.XGBClassifier(learning_rate=0.02, n_estimators=600, objective='multi:softprob',
         verbose=1, n_jobs=1, random_state=random_seed)
-    random_search = skl.model_selection.RandomizedSearchCV(estimator=init_est,
+    random_search = model_selection.RandomizedSearchCV(estimator=init_est,
         param_distributions=param_grid, n_iter=param_comb, n_jobs=4,
         cv=cv, verbose=1, random_state=random_seed)
     random_search.fit(X, y)
@@ -197,35 +252,65 @@ def main():
     with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
         data_pickle = pickle.load(fp)
 
-    print('Loading and scaling samples.')
-    processed_samples = common.process_samples(data_pickle['samples'],
-        proj_mask=PROJ_MASK)
-    #print('processed_samples {}'.format(processed_samples))
+    samples = data_pickle['samples']
 
     # Encode the labels.
     print('Encoding labels.')
-    le = skl.preprocessing.LabelEncoder()
+    le = preprocessing.LabelEncoder()
     encoded_labels = le.fit_transform(data_pickle['labels'])
     class_names = list(le.classes_)
     print(f'class names: {class_names}')
 
+    # Split data and labels up into train and test sets.
+    print('Splitting data into train and test sets.')
+    X_train, X_test, y_train, y_test = model_selection.train_test_split(
+        samples, encoded_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
+    #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
+
     # Balance the dataset. 
-    balanced_labels, balanced_data = balance_classes(encoded_labels, processed_samples)
+    #balanced_labels, balanced_data = balance_classes(encoded_labels, processed_samples)
 
     # Plot the dataset.
-    plot_data = balanced_data
-    plot_dataset(balanced_labels, plot_data)
+    #plot_data = balanced_data
+    #plot_dataset(balanced_labels, plot_data)
 
-    # Split data up into train and test sets.
-    (X_train, X_test, y_train, y_test) = skl.model_selection.train_test_split(
-        balanced_data, balanced_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
-    #print('X_train: {} X_test: {} y_train: {} y_test: {}'.format(X_train, X_test, y_train, y_test))
+    # Augment training set.
+    data_gen = DataGenerator(rotation_range=20.0, zoom_range=0.2, noise_sd=1.0)
+    print('Augmenting data set.')
+    print(f'X len: {len(X_train)}, y len: {len(y_train)}')
+    EPOCHES = 2 # Each epoch augments entire data set. 
+    BATCH_SIZE = 32 # Augment batch size.
+    y_train = y_train.tolist() # Faster to use a list in below ops.
+    xc = X_train.copy()
+    yc = y_train.copy()
+    for e in range(EPOCHES):
+        print(f'epoch: {e}')
+        batch = 0
+        for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
+            print(f'batch: {batch}')
+            X_train.extend(X_batch)
+            y_train.extend(y_batch)
+            batch += 1
+            if batch >= len(xc) / BATCH_SIZE:
+                break
 
-    skf = skl.model_selection.StratifiedKFold(n_splits=FOLDS)
+    print(f'aug X len: {len(X_train)}, aug y len: {len(y_train)}')
+
+    y_train = np.array(y_train, dtype=np.int8) # Convert back since sklearn wants np.array.
+
+    print('Preparing samples for training.')
+    X_train = common.process_samples(X_train, proj_mask=PROJ_MASK)
+    print(f'X_train shape: {X_train.shape}')
+
+    skf = model_selection.StratifiedKFold(n_splits=FOLDS)
 
     # Find best svm classifier, evaluate and then save it.
-    best_svm = find_best_svm_estimator(X_train, y_train, skf.split(X_train, y_train), RANDOM_SEED)
+    best_svm = find_best_svm_estimator(X_train, y_train,
+        skf.split(X_train, y_train), RANDOM_SEED)
 
+    print('Preparing samples for testimg.')
+    X_test = common.process_samples(X_test, proj_mask=PROJ_MASK)
+    print(f'X_test shape: {X_test.shape}')
     evaluate_model(best_svm, X_test, y_test, class_names, SVM_CM)
 
     print('\n Saving svm model...')

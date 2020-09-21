@@ -553,29 +553,29 @@ if __name__ == '__main__':
         logger.info(f'Captured {len(labels)} new samples with label(s) {set(labels)}.')
         try:
             with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
-                existing_data = pickle.load(fp)
+                data = pickle.load(fp)
 
             msg = (
                 f'Appending existing data file with new samples.'
-                f' Existing data file has {len(existing_data["labels"])} samples'
-                f' with label(s) {set(existing_data["labels"])}.'
+                f' Existing data file has {len(data["labels"])} samples'
+                f' with label(s) {set(data["labels"])}.'
             )
             logger.info(msg)
-            samples = np.vstack((existing_data['samples'], samples))
-            labels = existing_data['labels'] + labels
-        except ValueError:
-            logger.error(f'Error while trying to append data file, exiting.')
+            data['samples'].extend(samples)
+            data['labels'] += labels
+        except (ValueError, AttributeError) as e:
+            logger.error(f'Got error "{e}"" while trying to append data file, exiting.')
             exit(1)
         except FileNotFoundError:
             logger.info('Existing data file not found, creating.')
-        finally:
-            data = {'samples': samples, 'labels': labels}
-            logger.debug(f'Data dump:\n{data}')
-            with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'wb') as fp:
-                logger.info('Saving data file.')
-                pickle.dump(data, fp)
+
+        # Write data to disc. 
+        logger.debug(f'Data dump:\n{data}')
+        with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'wb') as fp:
+            logger.info('Saving data file.')
+            pickle.dump(data, fp)
     else:
-        logger.info(f'No data was captured.')
+        logger.info('No data was captured.')
 
     # Stop and Disconnect radar.
     radar.Stop()

@@ -24,7 +24,7 @@ PHI_MIN, PHI_MAX, PHI_RES = -30, 30, 2
 RADAR_PROFILE = radar.PROF_SENSOR
 
 # Project directory path. 
-PRJ_DIR = '/home/pi/radar-ml/'
+PRJ_DIR = './'
 
 # Radar samples with ground truth lables.
 RADAR_DATA = 'datasets/radar_samples.pickle'

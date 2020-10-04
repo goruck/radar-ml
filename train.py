@@ -34,39 +34,151 @@ FOLDS = 5
 PARA_COMB = 20
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
+# Each epoch augments entire data set. Set to zero to disable.
+EPOCHS = 1 
+# Augment batch size.
+BATCH_SIZE = 32
 
-class DataGenerator:
-    def __init__(self, rotation_range=None, zoom_range=None, noise_sd=None):
+class DataGenerator(object):
+    """Generate augmented radar data."""
+    def __init__(self, rotation_range=None, zoom_range=None, noise_sd=None, balance=True):
+        """Initialize generator behavior.
+
+        Note:
+            Augmenting data with balance set may not result in perfect balance.
+
+        Args:
+            rotation_range (float): Range of angles to rotate data [0, rotation_range].
+            zoom_range (float): Range of scale factors to zoom data [-zoom_range, +zoom_range].
+            noise_sd (float): Standard deviation of Gaussian noise added to data.
+            balance: (bool): Balance classes while augmenting data.
+        """
         self.rotation_range = rotation_range
         self.zoom_range = zoom_range
         self.noise_sd = noise_sd
+        self.balance = balance
 
     def flow(self, x, y, batch_size=32, save_to_dir=None, save_prefix='./datasets/augment'):
-        def augment(x_batch, y_batch):
+        """Yield batches of augmented radar data.
+
+        Args:
+            x (list of np.array): Data to augment.
+            y (list of int): Labels of data to augment.
+            batch_size (int): Size of sub-groups of data to process.
+            save_to_dir (bool): If true save augmented data to disk.
+            save_prefix (str): Location to save augmented data.
+
+        Yields:
+            x_batch (list of np.array): Batch of augmented data.
+            y_batch (list of int): Batch of augmented lables.
+
+        Examples:
+            for e in range(EPOCHS):
+                batch = 0
+                for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
+                    X_train.extend(X_batch)
+                    y_train.extend(y_batch)
+                    batch += 1
+                        if batch >= len(xc) / BATCH_SIZE:
+                        break
+        """
+        def augment(x_batch, y_batch, class_weights):
+            def angle():
+                """Generate a rotation angle."""
+                return np.random.uniform(0, self.rotation_range)
+            def scale():
+                """Generate a zoom scaling factor."""
+                return np.random.uniform(1.0 - self.zoom_range, 1.0 + self.zoom_range)
+            def clipped_zoom(img, zoom_factor, **kwargs):
+                """Generate zoomed versions of radar scans keeping array size constant.
+
+                Note:
+                    https://stackoverflow.com/questions/37119071/
+                """
+
+                h, w = img.shape[:2]
+
+                # For multichannel images we don't want to apply the zoom factor to the RGB
+                # dimension, so instead we create a tuple of zoom factors, one per array
+                # dimension, with 1's for any trailing dimensions after the width and height.
+                zoom_tuple = (zoom_factor,) * 2 + (1,) * (img.ndim - 2)
+
+                # Zooming out
+                if zoom_factor < 1:
+
+                    # Bounding box of the zoomed-out image within the output array
+                    zh = int(np.round(h * zoom_factor))
+                    zw = int(np.round(w * zoom_factor))
+                    top = (h - zh) // 2
+                    left = (w - zw) // 2
+
+                    # Zero-padding
+                    out = np.zeros_like(img)
+                    out[top:top+zh, left:left+zw] = ndimage.zoom(img, zoom_tuple, **kwargs)
+
+                # Zooming in
+                elif zoom_factor > 1:
+
+                    # Bounding box of the zoomed-in region within the input array
+                    zh = int(np.ceil(h / zoom_factor))
+                    zw = int(np.ceil(w / zoom_factor))
+                    top = (h - zh) // 2
+                    left = (w - zw) // 2
+
+                    out = ndimage.zoom(img[top:top+zh, left:left+zw], zoom_tuple, **kwargs)
+
+                    # `out` might still be slightly larger than `img` due to rounding, so
+                    # trim off any extra pixels at the edges
+                    trim_top = ((out.shape[0] - h) // 2)
+                    trim_left = ((out.shape[1] - w) // 2)
+                    out = out[trim_top:trim_top+h, trim_left:trim_left+w]
+
+                # If zoom_factor == 1, just return the input array
+                else:
+                    out = img
+
+                return out
+            def sparse_noise(q, sd):
+                """Add noise without breaking sparsity."""
+                q[q!=0] += np.random.normal(scale=sd)
+                return q
+
             aug_x = []
             aug_y = []
+
             for xb, yb in zip(x_batch, y_batch):
-                # Generate new tuple of rotated projections.
-                # Rotate each projection independenly.
-                if self.rotation_range is not None:
-                    new_t = tuple(ndimage.rotate(p, random.uniform(0, self.rotation_range))
-                            for p in xb)
-                    aug_x.append(new_t)
-                    aug_y.append(yb)
-                # Generate new tuple of zoomed projections.
-                # Use same zoom scale for all projections.
-                if self.zoom_range is not None:
-                    scale = random.uniform(1 - self.zoom_range, 1 + self.zoom_range)
-                    new_t = tuple(ndimage.zoom(p, scale) for p in xb)
-                    aug_x.append(new_t)
-                    aug_y.append(yb)
-                # Generate new tuple of projections with Gaussian noise.
-                # Add noise to each projection independently.
-                if self.noise_sd is not None:
-                    new_t = tuple(np.random.normal(p, self.noise_sd) for p in xb)
-                    aug_x.append(new_t)
-                    aug_y.append(yb)
+                for _ in range(int(np.round(class_weights[yb]))):
+                    # Generate new tuple of rotated projections.
+                    # Rotate each projection independently.
+                    if self.rotation_range is not None:
+                        new_t = tuple(ndimage.rotate(p, angle(), reshape=False) for p in xb)
+                        aug_x.append(new_t)
+                        aug_y.append(yb)
+                    # Generate new tuple of zoomed projections.
+                    # Use same zoom scale for all projections.
+                    if self.zoom_range is not None:
+                        scale_factor = scale()
+                        new_t = tuple(clipped_zoom(p, scale_factor) for p in xb)
+                        aug_x.append(new_t)
+                        aug_y.append(yb)
+                    # Generate new tuple of projections with Gaussian noise.
+                    # Add noise to each projection independently.
+                    if self.noise_sd is not None:
+                        new_t = tuple(sparse_noise(p, self.noise_sd) for p in xb)
+                        aug_x.append(new_t)
+                        aug_y.append(yb)
             return aug_x, aug_y
+
+        # Determine parameters to balance data.
+        # Most common classes and their counts from the most common to the least.
+        c = collections.Counter(y)
+        mc = c.most_common()
+        print(f'class most common: {mc}')
+        if self.balance:
+            class_weights = {c : mc[0][1] / cnt for c, cnt in mc}
+        else:
+            class_weights = {c : 1 for c, _ in mc}
+        print(f'class_weights: {class_weights}')
 
         # Generate augmented data.
         # Runs forever. Loop needs to be broken by calling function.
@@ -77,7 +189,7 @@ class DataGenerator:
                 end = remaining if remaining < batch_size else batch_size
                 x_batch = x[pos:pos + end]
                 y_batch = y[pos:pos + end]
-                yield augment(x_batch, y_batch)
+                yield augment(x_batch, y_batch, class_weights)
                 # Save augmented batches to disk if desired.
                 if save_to_dir is not None:
                     fname = f'batch_{str(batch)}_{str(pos)}.pickle'
@@ -86,7 +198,7 @@ class DataGenerator:
             batch += 1
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
-    """ Generate model confusion matrix and classification report. """
+    """Generate model confusion matrix and classification report."""
     print('\n Evaluating model.')
     y_pred = model.predict(X_test)
     cm = metrics.confusion_matrix(y_test, y_pred)
@@ -99,7 +211,7 @@ def evaluate_model(model, X_test, y_test, target_names, cm_name):
     return
 
 def balance_classes(labels, data):
-    """ balance classess """
+    """Balance classess."""
     # Most common classes and their counts from the most common to the least.
     c = collections.Counter(labels)
     mc = c.most_common()
@@ -108,8 +220,8 @@ def balance_classes(labels, data):
     if len(set([c for _, c in mc])) == 1: return labels, data
 
     print(f'Unbalanced most common: {mc}')
-    print(f'Unbalanced label shape: {labels.shape}')
-    print(f'Unbalanced data shape: {data.shape}')
+    print(f'Unbalanced label len: {len(labels)}')
+    print(f'Unbalanced data len: {len(data)}')
     
     # Build a list of class indices from most common rankings.
     indices = [np.nonzero(labels==i)[0] for (i, _) in mc]
@@ -137,8 +249,8 @@ def balance_classes(labels, data):
     mc = c.most_common()
 
     print(f'Balanced most common: {mc}')
-    print(f'Balanced label shape: {labels_balanced.shape}')
-    print(f'Balanced data shape: {data_balanced.shape}')
+    print(f'Balanced label len: {len(labels_balanced)}')
+    print(f'Balanced data len: {len(data_balanced)}')
     
     return labels_balanced, data_balanced
 
@@ -162,12 +274,11 @@ def plot_dataset(labels, data):
     return
 
 def plot_confusion_matrix(cm, class_names):
-    """
-    Returns a matplotlib figure containing the plotted confusion matrix.
+    """Returns a matplotlib figure containing the plotted confusion matrix.
 
-    Parameters:
-    cm (array, shape = [n, n]): a confusion matrix of integer classes
-    class_names (array, shape = [n]): String names of the integer classes
+    Args:
+        cm (array, shape = [n, n]): a confusion matrix of integer classes
+        class_names (array, shape = [n]): String names of the integer classes
     """
     figure = plt.figure(figsize=(8, 8))
     ax = plt.gca()
@@ -194,14 +305,21 @@ def plot_confusion_matrix(cm, class_names):
     return figure
 
 def find_best_svm_estimator(X, y, cv, random_seed):
-    # Exhaustive search over specified parameter values for svm.
-    # Returns optimized svm estimator.
+    """Exhaustive search over specified parameter values for svm.
+
+    Note:
+        https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
+
+    Returns:
+        optimized svm estimator.
+    """
     print('\n Finding best svm estimator...')
     Cs = [0.001, 0.01, 0.1, 1, 10, 100]
     gammas = [0.001, 0.01, 0.1, 1, 10, 100]
+    # Disable search over gamma since cycles are high for little benefit.
     param_grid = [
-        {'C': Cs, 'kernel': ['linear']},
-        {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}]
+        {'C': Cs, 'kernel': ['linear']}]
+        #{'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}]
     init_est = svm.SVC(probability=True, class_weight='balanced',
         random_state=random_seed, cache_size=1000, verbose=False)
     grid_search = model_selection.GridSearchCV(estimator=init_est,
@@ -218,10 +336,15 @@ def find_best_svm_estimator(X, y, cv, random_seed):
     return grid_search.best_estimator_
 
 def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
-    # Random search over specified parameter values for XGBoost.
-    # Exhaustive search takes many more cycles w/o much benefit.
-    # Returns optimized XGBoost estimator.
-    # Ref: https://www.kaggle.com/tilii7/hyperparameter-grid-search-with-xgboost
+    """Random search over specified parameter values for XGBoost.
+
+    Note:
+        Exhaustive search takes many more cycles w/o much benefit.
+        Ref: https://www.kaggle.com/tilii7/hyperparameter-grid-search-with-xgboost
+        
+    Returns:
+        optimized XGBoost estimator.
+    """
     print('\n Finding best XGBoost estimator...')
     param_grid = {
         'min_child_weight': [1, 5, 10],
@@ -252,7 +375,13 @@ def main():
     with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
         data_pickle = pickle.load(fp)
 
+    # Samples are in the form [(xz, yz, xy), ...] and are in range [0, RADAR_MAX].
     samples = data_pickle['samples']
+    #print(f'samples: {samples}')
+    # Scale each feature to the [0, 1] range without breaking the sparsity.
+    print('Scaling samples.')
+    samples = [[p / common.RADAR_MAX for p in s] for s in samples]
+    #print(f'scaled samples: {samples}')
 
     # Encode the labels.
     print('Encoding labels.')
@@ -267,23 +396,14 @@ def main():
         samples, encoded_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
-    # Balance the dataset. 
-    #balanced_labels, balanced_data = balance_classes(encoded_labels, processed_samples)
-
-    # Plot the dataset.
-    #plot_data = balanced_data
-    #plot_dataset(balanced_labels, plot_data)
-
     # Augment training set.
-    data_gen = DataGenerator(rotation_range=20.0, zoom_range=0.2, noise_sd=1.0)
-    print('Augmenting data set.')
+    data_gen = DataGenerator(rotation_range=20.0, zoom_range=0.2, noise_sd=0.2)
+    print('Augmenting dataset.')
     print(f'X len: {len(X_train)}, y len: {len(y_train)}')
-    EPOCHES = 2 # Each epoch augments entire data set. 
-    BATCH_SIZE = 32 # Augment batch size.
     y_train = y_train.tolist() # Faster to use a list in below ops.
     xc = X_train.copy()
     yc = y_train.copy()
-    for e in range(EPOCHES):
+    for e in range(EPOCHS):
         print(f'epoch: {e}')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
@@ -294,26 +414,29 @@ def main():
             if batch >= len(xc) / BATCH_SIZE:
                 break
 
-    print(f'aug X len: {len(X_train)}, aug y len: {len(y_train)}')
-
-    y_train = np.array(y_train, dtype=np.int8) # Convert back since sklearn wants np.array.
-
-    print('Preparing samples for training.')
+    print('Generating feature vectors from radar projections.')
     X_train = common.process_samples(X_train, proj_mask=PROJ_MASK)
-    print(f'X_train shape: {X_train.shape}')
+
+    # Convert y_train back to np array.
+    y_train = np.array(y_train, dtype=np.int8)
+
+    # Balance classes.
+    # This replicates minority class samples.
+    # Augmenting data may not result in perfect balance so this will fine-tune.
+    print('Balancing classes.')
+    y_train, X_train = balance_classes(y_train, X_train)
 
     skf = model_selection.StratifiedKFold(n_splits=FOLDS)
 
-    # Find best svm classifier, evaluate and then save it.
+    print('Finding best svm classifier.')
     best_svm = find_best_svm_estimator(X_train, y_train,
         skf.split(X_train, y_train), RANDOM_SEED)
 
-    print('Preparing samples for testimg.')
+    print('Evaluating best svm classifier.')
     X_test = common.process_samples(X_test, proj_mask=PROJ_MASK)
-    print(f'X_test shape: {X_test.shape}')
     evaluate_model(best_svm, X_test, y_test, class_names, SVM_CM)
 
-    print('\n Saving svm model...')
+    print('\n Saving svm model.')
     with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
         outfile.write(pickle.dumps(best_svm))
     """

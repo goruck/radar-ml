@@ -4,11 +4,12 @@ Common module for radar-ml.
 Copyright (c) 2020 Lindo St. Angel.
 """
 
-import WalabotAPI as radar
+import collections
+
 import numpy as np
 import scipy.ndimage
-import collections
-import sklearn.preprocessing
+
+import WalabotAPI as radar
 
 # Radar scan arena in spherical (r-Θ-Φ) coordinates from radar unit origin.
 # Radial distance (R) is along the Z axis. In cm.
@@ -19,6 +20,10 @@ import sklearn.preprocessing
 R_MIN, R_MAX, R_RES = 10, 360, 2
 THETA_MIN, THETA_MAX, THETA_RES = -42, 42, 4
 PHI_MIN, PHI_MAX, PHI_RES = -30, 30, 2
+
+# Min and max of radar return signal strenghts.
+RADAR_MIN = 0.
+RADAR_MAX = 254.
 
 # Set scan profile.
 RADAR_PROFILE = radar.PROF_SENSOR
@@ -120,7 +125,7 @@ def calculate_matrix_indices(x, y, z, size_x, size_y, size_z):
     return (i, j, k)
 
 def process_samples(samples, proj_mask=ProjMask(xz=True,yz=True,xy=True),
-    proj_zoom=ProjZoom(xz=[1.0, 1.0],yz=[1.0, 1.0],xy=[1.0, 1.0])):
+    proj_zoom=ProjZoom(xz=[1.0, 1.0],yz=[1.0, 1.0],xy=[1.0, 1.0]), scale=False):
     """ Prepare samples for training or predictions.
 
     Get projections of interest, zoom them to fit a radar arena then scale and flatten.
@@ -130,8 +135,9 @@ def process_samples(samples, proj_mask=ProjMask(xz=True,yz=True,xy=True),
 
     Args:
         samples (list of tuples of np arrays): Samples of radar projections [(xz, yz, xy)].
-        proj_mask (tuple of bools): Projection(s) to use (xz, yz, xy).
+        proj_mask (tuple of bool): Projection(s) to use (xz, yz, xy).
         proj_zoom (tuple of list of floats): Projection zoom factors (xz, yz, xy).
+        scale (bool): If True scales each feature to [0, 1].
 
     Returns:
         np.array: processed samples
@@ -142,6 +148,6 @@ def process_samples(samples, proj_mask=ProjMask(xz=True,yz=True,xy=True),
             for i, p in enumerate(t) if proj_mask[i])
         # Concatenate into a flattened feature vector.
         concat_projections = np.concatenate(wanted_projections, axis=None)
-        # Scale features to the [-1, 1] range.
-        return sklearn.preprocessing.maxabs_scale(concat_projections, axis=0, copy=True)
+        # Scale each feature to the [0, 1] range without breaking the sparsity.
+        return concat_projections / RADAR_MAX if scale else concat_projections
     return np.array([make(t) for t in samples])

@@ -14,7 +14,8 @@ import random
 
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn import model_selection, metrics, preprocessing, utils, svm
+from sklearn import (model_selection, metrics, preprocessing, utils,
+    svm, linear_model)
 from scipy import ndimage
 #import xgboost as xgb
 
@@ -35,7 +36,7 @@ PARA_COMB = 20
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 # Each epoch augments entire data set. Set to zero to disable.
-EPOCHS = 1 
+EPOCHS = 0
 # Augment batch size.
 BATCH_SIZE = 32
 
@@ -82,20 +83,25 @@ class DataGenerator(object):
                         if batch >= len(xc) / BATCH_SIZE:
                         break
         """
+
         def augment(x_batch, y_batch, class_weights):
-            def angle():
-                """Generate a rotation angle."""
-                return np.random.uniform(0, self.rotation_range)
-            def scale():
-                """Generate a zoom scaling factor."""
-                return np.random.uniform(1.0 - self.zoom_range, 1.0 + self.zoom_range)
+            rg = np.random.Generator(np.random.PCG64())
+
+            def rotate(p):
+                """Rotate projection."""
+                angle = np.random.uniform(0, self.rotation_range)
+                out = ndimage.rotate(p, angle, reshape=False)
+                # Clamp to [0,1].
+                out[out>1.0] = 1.0
+                out[out<0.0] = 0.0
+                return out
+
             def clipped_zoom(img, zoom_factor, **kwargs):
                 """Generate zoomed versions of radar scans keeping array size constant.
 
                 Note:
                     https://stackoverflow.com/questions/37119071/
                 """
-
                 h, w = img.shape[:2]
 
                 # For multichannel images we don't want to apply the zoom factor to the RGB
@@ -137,11 +143,20 @@ class DataGenerator(object):
                 else:
                     out = img
 
+                # Clamp to [0,1].
+                out[out>1.0] = 1.0
+                out[out<0.0] = 0.0
+
                 return out
+
             def sparse_noise(q, sd):
-                """Add noise without breaking sparsity."""
-                q[q!=0] += np.random.normal(scale=sd)
-                return q
+                """Add Gaussian noise w/o breaking sparsity."""
+                qc = q.copy() # do not mutate original list
+                qc[qc!=0] += rg.normal(scale=sd)
+                # Clamp to [0,1].
+                qc[qc>1.0] = 1.0
+                qc[qc<0.0] = 0.0
+                return qc
 
             aug_x = []
             aug_y = []
@@ -149,20 +164,20 @@ class DataGenerator(object):
             for xb, yb in zip(x_batch, y_batch):
                 for _ in range(int(np.round(class_weights[yb]))):
                     # Generate new tuple of rotated projections.
-                    # Rotate each projection independently.
+                    # Rotates each projection independently.
                     if self.rotation_range is not None:
-                        new_t = tuple(ndimage.rotate(p, angle(), reshape=False) for p in xb)
+                        new_t = tuple(rotate(p) for p in xb)
                         aug_x.append(new_t)
                         aug_y.append(yb)
                     # Generate new tuple of zoomed projections.
                     # Use same zoom scale for all projections.
                     if self.zoom_range is not None:
-                        scale_factor = scale()
-                        new_t = tuple(clipped_zoom(p, scale_factor) for p in xb)
+                        zoom_factor = np.random.uniform(1.0 - self.zoom_range, 1.0 + self.zoom_range)
+                        new_t = tuple(clipped_zoom(p, zoom_factor) for p in xb)
                         aug_x.append(new_t)
                         aug_y.append(yb)
                     # Generate new tuple of projections with Gaussian noise.
-                    # Add noise to each projection independently.
+                    # Adds noise to each projection independently.
                     if self.noise_sd is not None:
                         new_t = tuple(sparse_noise(p, self.noise_sd) for p in xb)
                         aug_x.append(new_t)
@@ -335,6 +350,54 @@ def find_best_svm_estimator(X, y, cv, random_seed):
     print(grid_search.best_params_)
     return grid_search.best_estimator_
 
+def find_best_linear_svm_estimator(X, y, cv, random_seed):
+    """Exhaustive search over specified parameter values for linear svm.
+
+    Returns:
+        optimized linear svm estimator.
+    """
+    print('Finding best linear svm estimator.')
+    Cs = [0.1, 1, 10]
+    param_grid = [{'C': Cs}]
+    init_est = svm.LinearSVC(random_state=random_seed)
+    grid_search = model_selection.GridSearchCV(estimator=init_est,
+        param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
+    grid_search.fit(X, y)
+    #print('\n All results:')
+    #print(grid_search.cv_results_)
+    print('\n Best estimator:')
+    print(grid_search.best_estimator_)
+    print('\n Best score for {}-fold search:'.format(FOLDS))
+    print(grid_search.best_score_)
+    print('\n Best hyperparameters:')
+    print(grid_search.best_params_)
+    return grid_search.best_estimator_
+
+def find_best_svm_sgd_estimator(X, y, cv, random_seed):
+    """Exhaustive search over specified parameter values for svm using sgd.
+
+    Returns:
+        optimized linear svm estimator.
+    """
+    print('Finding best linear svm estimator.')
+    max_iter = max(np.ceil(10**6 / len(X)), 1000)
+    alphas = [1.0e-01, 1.0e-02, 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06]
+    param_grid = {'alpha': alphas}
+    init_est = linear_model.SGDClassifier(loss='modified_huber', max_iter=max_iter,
+        random_state=random_seed, n_jobs=4)
+    grid_search = model_selection.GridSearchCV(estimator=init_est,
+        param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
+    grid_search.fit(X, y)
+    #print('\n All results:')
+    #print(grid_search.cv_results_)
+    print('\n Best estimator:')
+    print(grid_search.best_estimator_)
+    print('\n Best score for {}-fold search:'.format(FOLDS))
+    print(grid_search.best_score_)
+    print('\n Best hyperparameters:')
+    print(grid_search.best_params_)
+    return grid_search.best_estimator_
+
 def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
     """Random search over specified parameter values for XGBoost.
 
@@ -377,10 +440,13 @@ def main():
 
     # Samples are in the form [(xz, yz, xy), ...] and are in range [0, RADAR_MAX].
     samples = data_pickle['samples']
+    #max_sample = np.amax([[np.concatenate(t, axis=None)] for t in samples])
     #print(f'samples: {samples}')
     # Scale each feature to the [0, 1] range without breaking the sparsity.
     print('Scaling samples.')
     samples = [[p / common.RADAR_MAX for p in s] for s in samples]
+    #max_sample = np.amax([[np.concatenate(t, axis=None)] for t in samples])
+    #print(f'sample max: {max_sample}')
     #print(f'scaled samples: {samples}')
 
     # Encode the labels.
@@ -397,12 +463,17 @@ def main():
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
     # Augment training set.
-    data_gen = DataGenerator(rotation_range=20.0, zoom_range=0.2, noise_sd=0.2)
+    data_gen = DataGenerator(rotation_range=10.0, zoom_range=0.2, noise_sd=0.1)
     print('Augmenting dataset.')
     print(f'X len: {len(X_train)}, y len: {len(y_train)}')
-    y_train = y_train.tolist() # Faster to use a list in below ops.
+
+    # Faster to use a list in below ops.
+    y_train = y_train.tolist()
+
+    # Do not mutate original lists.
     xc = X_train.copy()
     yc = y_train.copy()
+
     for e in range(EPOCHS):
         print(f'epoch: {e}')
         batch = 0
@@ -413,6 +484,10 @@ def main():
             batch += 1
             if batch >= len(xc) / BATCH_SIZE:
                 break
+    
+    # Sanity check if augmentation introduced a scaling problem.
+    max = np.amax([[np.concatenate(t, axis=None)] for t in X_train])
+    assert abs(max - 1.0) < 1e-6, "scale error"
 
     print('Generating feature vectors from radar projections.')
     X_train = common.process_samples(X_train, proj_mask=PROJ_MASK)
@@ -428,8 +503,8 @@ def main():
 
     skf = model_selection.StratifiedKFold(n_splits=FOLDS)
 
-    print('Finding best svm classifier.')
-    best_svm = find_best_svm_estimator(X_train, y_train,
+    # Find best linear svm sgd classifier.
+    best_svm = find_best_svm_sgd_estimator(X_train, y_train,
         skf.split(X_train, y_train), RANDOM_SEED)
 
     print('Evaluating best svm classifier.')

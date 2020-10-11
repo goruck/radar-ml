@@ -23,7 +23,7 @@ PHI_MIN, PHI_MAX, PHI_RES = -30, 30, 2
 
 # Min and max of radar return signal strenghts.
 RADAR_MIN = 0.
-RADAR_MAX = 254.
+RADAR_MAX = 255.
 
 # Set scan profile.
 RADAR_PROFILE = radar.PROF_SENSOR

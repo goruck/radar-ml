@@ -36,7 +36,7 @@ PARA_COMB = 20
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
 # Each epoch augments entire data set. Set to zero to disable.
-EPOCHS = 0
+EPOCHS = 5
 # Augment batch size.
 BATCH_SIZE = 32
 
@@ -354,14 +354,14 @@ def find_best_linear_svm_estimator(X, y, cv, random_seed):
     """Exhaustive search over specified parameter values for linear svm.
 
     Returns:
-        optimized linear svm estimator.
+        optimized svm estimator.
     """
     print('Finding best linear svm estimator.')
     Cs = [0.1, 1, 10]
     param_grid = [{'C': Cs}]
-    init_est = svm.LinearSVC(random_state=random_seed)
+    init_est = svm.LinearSVC(random_state=random_seed, dual=False)
     grid_search = model_selection.GridSearchCV(estimator=init_est,
-        param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
+        param_grid=param_grid, verbose=2, n_jobs=2, cv=cv)
     grid_search.fit(X, y)
     #print('\n All results:')
     #print(grid_search.cv_results_)
@@ -373,18 +373,18 @@ def find_best_linear_svm_estimator(X, y, cv, random_seed):
     print(grid_search.best_params_)
     return grid_search.best_estimator_
 
-def find_best_svm_sgd_estimator(X, y, cv, random_seed):
+def find_best_sgd_svm_estimator(X, y, cv, random_seed):
     """Exhaustive search over specified parameter values for svm using sgd.
 
     Returns:
-        optimized linear svm estimator.
+        optimized svm estimator.
     """
-    print('Finding best linear svm estimator.')
+    print('Finding best sgd svm estimator.')
     max_iter = max(np.ceil(10**6 / len(X)), 1000)
     alphas = [1.0e-01, 1.0e-02, 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06]
     param_grid = {'alpha': alphas}
-    init_est = linear_model.SGDClassifier(loss='modified_huber', max_iter=max_iter,
-        random_state=random_seed, n_jobs=4)
+    init_est = linear_model.SGDClassifier(loss='log', max_iter=max_iter,
+        random_state=random_seed, n_jobs=4, average=True)
     grid_search = model_selection.GridSearchCV(estimator=init_est,
         param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
     grid_search.fit(X, y)
@@ -463,7 +463,7 @@ def main():
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
     # Augment training set.
-    data_gen = DataGenerator(rotation_range=10.0, zoom_range=0.2, noise_sd=0.1)
+    data_gen = DataGenerator(rotation_range=15.0, zoom_range=0.3, noise_sd=0.2)
     print('Augmenting dataset.')
     print(f'X len: {len(X_train)}, y len: {len(y_train)}')
 
@@ -503,8 +503,8 @@ def main():
 
     skf = model_selection.StratifiedKFold(n_splits=FOLDS)
 
-    # Find best linear svm sgd classifier.
-    best_svm = find_best_svm_sgd_estimator(X_train, y_train,
+    # Find best classifier.
+    best_svm = find_best_sgd_svm_estimator(X_train, y_train,
         skf.split(X_train, y_train), RANDOM_SEED)
 
     print('Evaluating best svm classifier.')

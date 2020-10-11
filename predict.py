@@ -12,7 +12,7 @@ import logging
 import argparse
 import os
 import sys
-from sklearn.svm import SVC
+from sklearn.svm import SVC, linear_model
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ RADAR_THRESHOLD = 5
 MTI = True
 # Radar scan arena in polar coords.
 # This can be different than arena used for training. 
-R_MIN, R_MAX, R_RES = 15, 331, 4
-THETA_MIN, THETA_MAX, THETA_RES = -40, 35, 8
-PHI_MIN, PHI_MAX, PHI_RES = -27, 31, 4
+R_MIN, R_MAX, R_RES = 10, 360, 2
+THETA_MIN, THETA_MAX, THETA_RES = -42, 42, 4
+PHI_MIN, PHI_MAX, PHI_RES = -30, 30, 2
 
 # Radar 2-D projections to use for predictions.
 PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
@@ -118,7 +118,8 @@ def predict(min_proba):
                 observation = common.process_samples(
                     [(projection_xz, projection_yz, projection_xy)],
                     proj_mask=PROJ_MASK,
-                    proj_zoom=proj_zoom)
+                    proj_zoom=proj_zoom,
+                    scale=True)
 
                 # Make a prediction. 
                 name, prob = classifier(observation, model, le, min_proba)

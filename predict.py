@@ -12,7 +12,7 @@ import logging
 import argparse
 import os
 import sys
-from sklearn.svm import SVC, linear_model
+from sklearn import svm, linear_model
 
 logger = logging.getLogger(__name__)
 

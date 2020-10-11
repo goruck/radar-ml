@@ -34,7 +34,7 @@ PRJ_DIR = './'
 # Radar samples with ground truth lables.
 RADAR_DATA = 'datasets/radar_samples.pickle'
 # SVM model name.
-SVM_MODEL = 'train-results/svm_radar_classifier_all.pickle'
+SVM_MODEL = 'train-results/svm_radar_classifier_all_sgd.pickle'
 # XGBoost model name.
 XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
 # Label encoder name.

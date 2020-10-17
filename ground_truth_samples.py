@@ -568,6 +568,7 @@ if __name__ == '__main__':
             exit(1)
         except FileNotFoundError:
             logger.info('Existing data file not found, creating.')
+            data = {'samples': samples, 'labels': labels}
 
         # Write data to disc. 
         logger.debug(f'Data dump:\n{data}')

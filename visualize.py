@@ -168,7 +168,7 @@ def visualize(samples, labels):
     return
 
 if __name__ == '__main__':
-    default_dataset = 'datasets/radar_samples_20Oct20.pickle'
+    default_dataset = 'datasets/radar_samples.pickle'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str,

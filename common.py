@@ -32,7 +32,7 @@ RADAR_PROFILE = radar.PROF_SENSOR
 PRJ_DIR = './'
 
 # Radar samples with ground truth lables.
-RADAR_DATA = 'datasets/radar_samples_20Sep20.pickle'
+RADAR_DATA = 'datasets/radar_samples.pickle'
 # SVM model name.
 SVM_MODEL = 'train-results/svm_radar_classifier_all_sgd.pickle'
 # XGBoost model name.

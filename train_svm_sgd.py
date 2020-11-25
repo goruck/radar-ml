@@ -10,6 +10,9 @@ import itertools
 import functools
 import pickle
 import random
+import argparse
+import logging
+import sys
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -19,34 +22,16 @@ from scipy import ndimage
 
 import common
 
-"""
-# Radar samples with ground truth labels.
-EXISTING_RADAR_DATA = 'datasets/radar_samples_20Sep20.pickle'
-# New radar samples with ground truth labels.
-NEW_RADAR_DATA = 'datasets/radar_samples.pickle'
-# Output SVM model name.
-SVM_MODEL = 'train-results/svm_radar_classifier_all_sgd.pickle'
-# Existing SVM model name.
-EXISTING_SVM_MODEL = 'train-results/svm_radar_classifier_all_sgd.pickle'
-"""
+logger = logging.getLogger(__name__)
 
-# Label encoder name.
-LABELS = 'train-results/radar_labels.pickle'
-
-# Output SVM confusion matrix name.
-SVM_CM = 'train-results/svm_sgd_cm.png'
 # Define a seed so random operations are the same from run to run.
 RANDOM_SEED = 1234
 # Define number of folds for the Stratified K-Folds cross-validator.
 FOLDS = 5
-# Radar 2-D projections to use for predictions.
-PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
-# Labels to use for training. 
-DESIRED_LABELS = ('person', 'polly', 'rebel')
-# Each epoch augments entire data set. Set to zero to disable.
-EPOCHS = 2
 # Augment batch size.
 BATCH_SIZE = 32
+# Log file name.
+LOG_FILE = 'train_svm_sgd.log'
 
 class DataGenerator(object):
     """Generate augmented radar data."""
@@ -266,8 +251,10 @@ def balance_classes(labels, data):
     labels_upsampled = [upsample(label) for label in labels_list]
 
     # Recombine the separate, and now upsampled, label and data sets. 
-    data_balanced = functools.reduce(lambda a, b: np.vstack((a, b)), data_upsampled)
-    labels_balanced = functools.reduce(lambda a, b: np.concatenate((a, b)), labels_upsampled)
+    data_balanced = functools.reduce(
+        lambda a, b: np.vstack((a, b)), data_upsampled)
+    labels_balanced = functools.reduce(
+        lambda a, b: np.concatenate((a, b)), labels_upsampled)
 
     c = collections.Counter(labels_balanced)
     mc = c.most_common()
@@ -361,12 +348,17 @@ def find_best_sgd_svm_estimator(X, y, cv, random_seed):
     print(grid_search.best_params_)
     return grid_search.best_estimator_
 
-def fit(data_pickle, find_best_fit=False):
+def fit(data,
+        desired_labels,
+        proj_mask,
+        online_learn,
+        epochs,
+        svm_cm):
     # Filter desired classes.
-    desired = list(map(lambda x: 1 if x in DESIRED_LABELS else 0, data_pickle['labels']))
+    desired = list(map(lambda x: 1 if x in desired_labels else 0, data['labels']))
 
     # Samples are in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
-    samples = [s for i, s in enumerate(data_pickle['samples']) if desired[i]]
+    samples = [s for i, s in enumerate(data['samples']) if desired[i]]
     # Scale each feature to the [0, 1] range without breaking the sparsity.
     print('Scaling samples.')
     samples = [[p / common.RADAR_MAX for p in s] for s in samples]
@@ -374,7 +366,7 @@ def fit(data_pickle, find_best_fit=False):
     # Encode the labels.
     print('Encoding labels.')
     le = preprocessing.LabelEncoder()
-    desired_labels = [l for i, l in enumerate(data_pickle['labels']) if desired[i]]
+    desired_labels = [l for i, l in enumerate(data['labels']) if desired[i]]
     encoded_labels = le.fit_transform(desired_labels)
     class_names = list(le.classes_)
 
@@ -394,13 +386,13 @@ def fit(data_pickle, find_best_fit=False):
     yc = y_train.copy()
 
     # Generate feature vectors from radar projections.
-    X_train = common.process_samples(X_train, proj_mask=PROJ_MASK)
-    X_test = common.process_samples(X_test, proj_mask=PROJ_MASK)
+    X_train = common.process_samples(X_train, proj_mask=common.ProjMask(proj_mask))
+    X_test = common.process_samples(X_test, proj_mask=common.ProjMask(proj_mask))
 
     # Balance classes.
     y_train, X_train = balance_classes(y_train, X_train)
 
-    if find_best_fit: 
+    if not online_learn: 
         # Find best initial classifier.
         print('Fitting best classifier.')
         skf = model_selection.StratifiedKFold(n_splits=FOLDS)
@@ -423,12 +415,13 @@ def fit(data_pickle, find_best_fit=False):
     # Augment training set and do partial fits on it.
     print('Fitting classifier with augmented data.')
     data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
-    for e in range(EPOCHS):
+    for e in range(epochs):
         print(f'augment epoch: {e}')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
             print(f'augment batch: {batch}')
-            X_batch = common.process_samples(X_batch, proj_mask=PROJ_MASK)
+            X_batch = common.process_samples(X_batch,
+                proj_mask=common.ProjMask(proj_mask))
             y_batch, X_batch = balance_classes(y_batch, X_batch)
             clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
             y_predicted = clf.predict(X_test)
@@ -438,67 +431,83 @@ def fit(data_pickle, find_best_fit=False):
                 break
 
     print('Evaluating final classifier.')
-    evaluate_model(clf, X_test, y_test, class_names, SVM_CM)
+    evaluate_model(clf, X_test, y_test, class_names, svm_cm)
 
     print('Saving svm model.')
     with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
         outfile.write(pickle.dumps(clf))
 
-    if find_best_fit:
+    if not online_learn:
         print('Saving label encoder.')
         with open(os.path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
             outfile.write(pickle.dumps(le))
 
+    return
+
 if __name__ == '__main__':
+    # Training datasets.
+    default_datasets = [common.RADAR_DATA]
+    # Output SVM confusion matrix.
+    default_svm_cm = 'train-results/svm_sgd_cm.png'
+    # Radar 2-D projections to use for predictions (xy, xz, yz).
+    default_proj_mask = [True, True, True]
+    # Labels to use for training. 
+    default_desired_labels = ['person', 'dog', 'cat']
+    # Each epoch augments entire data set (zero disables).
+    default_epochs = 2
 
-    datasets = [
-        'datasets/radar_samples.pickle',
-        #'datasets/radar_samples_19Oct20.pickle',
-        #'datasets/radar_samples_20Oct20.pickle'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--epochs', type=int,
+        help='number of augementation epochs',
+        default=default_epochs)
+    parser.add_argument('--datasets', nargs='+', type=str,
+        help='paths to training datasets',
+        default=default_datasets)
+    parser.add_argument('--desired_labels', nargs='+', type=str,
+        help='labels to use for training',
+        default=default_desired_labels)
+    parser.add_argument('--proj_mask', nargs='+', type=bool,
+        help='projection mask (xy, xz, yz)',
+        default=default_proj_mask)
+    parser.add_argument('--svm_cm', type=str,
+        help='path of output svm confusion matrix',
+        default=os.path.join(common.PRJ_DIR, default_svm_cm))
+    parser.add_argument('--logging_level', type=str,
+        help='logging level, "info" or "debug"',
+        default='info')
+    parser.add_argument('--online_learn', action='store_true',
+        help='use dataset(s) for online learning')
+    parser.set_defaults(online_learn=False)
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        level=logging.DEBUG if args.logging_level=='debug' else logging.INFO,
+        handlers=[
+            logging.FileHandler(os.path.join(common.PRJ_DIR, LOG_FILE), mode='w'),
+            logging.StreamHandler(sys.stdout)
         ]
+    )
 
-    samples = list()
-    labels = list()
-
-    for dataset in datasets:
-        # Load radar observations and labels.
-        print(f'Opening data set: {dataset}')
+    # Combine multiple datasets if given.
+    samples = []
+    labels = []
+    for dataset in args.datasets:
+        print(f'Opening dataset: {dataset}')
         try:
             with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
                 data_pickle = pickle.load(fp)
         except FileNotFoundError as e:
-            print(f'Data set not found: {e}')
+            print(f'Dataset not found: {e}')
             exit(1)
-
-        print(f'found {set(data_pickle["labels"])}')
-
+        print(f'Found {set(data_pickle["labels"])}.')
         samples.extend(data_pickle['samples'])
         labels.extend(data_pickle['labels'])
-
     data = {'samples': samples, 'labels': labels}
 
-    fit(data, find_best_fit=True)
-
-    """try:
-        with open(os.path.join(common.PRJ_DIR, 'datasets/radar_samples_20Sep20.pickle'), 'rb') as fp:
-            data_pickle = pickle.load(fp)
-    except FileNotFoundError as e:
-        print(f'Data set not found: {e}')
-        exit(1)
-    fit(data_pickle, find_best_fit=True)
-
-    try:
-        with open(os.path.join(common.PRJ_DIR, 'datasets/radar_samples_19Oct20.pickle'), 'rb') as fp:
-            data_pickle = pickle.load(fp)
-    except FileNotFoundError as e:
-        print(f'Data set not found: {e}')
-        exit(1)
-    fit(data_pickle, find_best_fit=False)
-    
-    try:
-        with open(os.path.join(common.PRJ_DIR, 'datasets/radar_samples.pickle'), 'rb') as fp:
-            data_pickle = pickle.load(fp)
-    except FileNotFoundError as e:
-        print(f'Data set not found: {e}')
-        exit(1)
-    fit(data_pickle, find_best_fit=False)"""
+    fit(data=data,
+        desired_labels=args.desired_labels,
+        proj_mask=args.proj_mask,
+        online_learn=args.online_learn,
+        epochs=args.epochs,
+        svm_cm=args.svm_cm)

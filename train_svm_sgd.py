@@ -386,8 +386,8 @@ def fit(data,
     yc = y_train.copy()
 
     # Generate feature vectors from radar projections.
-    X_train = common.process_samples(X_train, proj_mask=common.ProjMask(proj_mask))
-    X_test = common.process_samples(X_test, proj_mask=common.ProjMask(proj_mask))
+    X_train = common.process_samples(X_train, proj_mask=common.ProjMask(*proj_mask))
+    X_test = common.process_samples(X_test, proj_mask=common.ProjMask(*proj_mask))
 
     # Balance classes.
     y_train, X_train = balance_classes(y_train, X_train)
@@ -421,7 +421,7 @@ def fit(data,
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
             print(f'augment batch: {batch}')
             X_batch = common.process_samples(X_batch,
-                proj_mask=common.ProjMask(proj_mask))
+                proj_mask=common.ProjMask(*proj_mask))
             y_batch, X_batch = balance_classes(y_batch, X_batch)
             clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
             y_predicted = clf.predict(X_test)

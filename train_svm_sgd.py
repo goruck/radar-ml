@@ -425,26 +425,27 @@ def fit(data,
     y_predicted = clf.predict(X_test)
     logger.debug(f'Un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
 
-    # Augment training set and do partial fits on it.
+    # Augment training set and use to run partial fits on classifier.
     if epochs:
         logger.info(f'Running partial fit with augmented data (epochs: {epochs}).')
         xc = X_train.copy()
         yc = y_train.copy()
         data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
-    for e in range(epochs):
-        logger.debug(f'Augment epoch: {e}.')
-        batch = 0
-        for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
-            logger.debug(f'Augment batch: {batch}.')
-            X_batch = common.process_samples(X_batch,
-                proj_mask=common.ProjMask(*proj_mask))
-            y_batch, X_batch = balance_classes(y_batch, X_batch)
-            clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
-            y_predicted = clf.predict(X_test)
-            logger.debug(f'Augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
-            batch += 1
-            if batch >= len(xc) / BATCH_SIZE:
-                break
+        for e in range(epochs):
+            logger.debug(f'Augment epoch: {e}.')
+            batch = 0
+            for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
+                logger.debug(f'Augment batch: {batch}.')
+                X_batch = common.process_samples(X_batch,
+                    proj_mask=common.ProjMask(*proj_mask))
+                y_batch, X_batch = balance_classes(y_batch, X_batch)
+                clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
+                y_predicted = clf.predict(X_test)
+                acc = metrics.accuracy_score(y_test, y_predicted)
+                logger.debug(f'Augmented accuracy: {acc}.')
+                batch += 1
+                if batch >= len(xc) / BATCH_SIZE:
+                    break
 
     logger.info('Evaluating final classifier on test set.')
     evaluate_model(clf, X_test, y_test, class_names, svm_cm)

@@ -371,10 +371,11 @@ def fit(data,
     """
 
     # Filter desired classes.
+    logger.info('Maybe filtering classes.')
     desired = list(map(lambda x: 1 if x in desired_labels else 0, data['labels']))
-
     # Samples are in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
     samples = [s for i, s in enumerate(data['samples']) if desired[i]]
+
     # Scale each feature to the [0, 1] range without breaking the sparsity.
     logger.info('Scaling samples.')
     samples = [[p / common.RADAR_MAX for p in s] for s in samples]
@@ -397,26 +398,24 @@ def fit(data,
         samples, encoded_labels, test_size=TEST_SIZE, random_state=RANDOM_SEED, shuffle=True)
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
-    # Copy data set for use in augmentation.
-    xc = X_train.copy()
-    yc = y_train.copy()
-
     # Generate feature vectors from radar projections.
+    logger.info('Generating feature vectors.')
     X_train = common.process_samples(X_train, proj_mask=common.ProjMask(*proj_mask))
     X_test = common.process_samples(X_test, proj_mask=common.ProjMask(*proj_mask))
 
     # Balance classes.
+    logger.info('Balancing classes.')
     y_train, X_train = balance_classes(y_train, X_train)
 
     if not online_learn: 
         # Find best initial classifier.
-        logger.info('Fitting best classifier.')
+        logger.info('Running best fit with new data.')
         skf = model_selection.StratifiedKFold(n_splits=FOLDS)
         clf = find_best_sgd_svm_estimator(X_train, y_train,
             skf.split(X_train, y_train), RANDOM_SEED)
     else:
         # Fit existing classifier with new data.
-        logger.info('Fitting classifier with with new data.')
+        logger.info('Running partial fit with new data.')
         with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
             clf = pickle.load(fp)
         max_iter = max(np.ceil(10**6 / len(X_train)), 1000)
@@ -427,10 +426,13 @@ def fit(data,
     logger.debug(f'Un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
 
     # Augment training set and do partial fits on it.
-    data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
-    logger.info(f'Augment epochs: {epochs}.' if epochs else 'Not augmenting data set.')
+    if epochs:
+        logger.info(f'Running partial fit with augmented data (epochs: {epochs}).')
+        xc = X_train.copy()
+        yc = y_train.copy()
+        data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
     for e in range(epochs):
-        logger.debug(f'Running augment epoch: {e}.')
+        logger.debug(f'Augment epoch: {e}.')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
             logger.debug(f'Augment batch: {batch}.')

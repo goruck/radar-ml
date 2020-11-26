@@ -418,17 +418,22 @@ def plot_and_capture_data(num_samples, realtime_plot, save_plot, save_plot_path,
                             # projection_xy is 2D projection of target signal in x-y plane.
                             projection_xy = raw_image_np[:,:,k]
                             logger.debug(f'Projection_xy shape: {projection_xy.shape}')
+                            msg = (
+                                f'Found "{target_name}" with score {current_score:.1f} at {current_distance:.1f} (cm)'
+                                f' from target at z {target.zPosCm:.1f} (cm)...candidate for storage.'
+                            )
+                            logger.debug(msg)
                         else:
                             msg = (
                                 f'Found "{obj.label}" with score {obj.score:.1f} at {distance:.1f} (cm)'
                                 f' too far from target at z {target.zPosCm:.1f} (cm)...skipping.'
                             )
-                            logger.info(msg)
+                            logger.debug(msg)
 
                     if target_object_close:
                         msg = (
-                            f'Found "{target_name}" with score {current_score:.1f} at {distance:.1f} (cm)'
-                            f' from target at z {target.zPosCm:.1f} (cm)...storing.'
+                            f'Stored "{target_name}" with score {current_score:.1f} at {current_distance:.1f} (cm)'
+                            f' from target at z {target.zPosCm:.1f} (cm).'
                         )
                         logger.info(msg)
 

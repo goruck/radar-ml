@@ -428,9 +428,9 @@ def fit(data,
 
     # Augment training set and do partial fits on it.
     data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
-    logger.debug(f'Augment epochs: {epochs}.')
+    logger.info(f'Augment epochs: {epochs}.' if epochs else 'Not augmenting data set.')
     for e in range(epochs):
-        logger.debug(f'Augment epoch: {e}.')
+        logger.debug(f'Running augment epoch: {e}.')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
             logger.debug(f'Augment batch: {batch}.')
@@ -444,17 +444,17 @@ def fit(data,
             if batch >= len(xc) / BATCH_SIZE:
                 break
 
-    logger.info('Evaluating final classifier.')
+    logger.info('Evaluating final classifier on test set.')
     evaluate_model(clf, X_test, y_test, class_names, svm_cm)
 
     path = os.path.join(common.PRJ_DIR, common.SVM_MODEL)
-    logger.info('Saving svm model to: {path}.')
+    logger.info(f'Saving svm model to: {path}.')
     with open(path, 'wb') as outfile:
         outfile.write(pickle.dumps(clf))
 
     if not online_learn:
         path = os.path.join(common.PRJ_DIR, common.LABELS)
-        logger.info('Saving label encoder to: {path}.')
+        logger.info(f'Saving label encoder to: {path}.')
         with open(path, 'wb') as outfile:
             outfile.write(pickle.dumps(le))
 

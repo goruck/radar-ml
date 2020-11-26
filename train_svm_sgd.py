@@ -182,12 +182,12 @@ class DataGenerator(object):
         # Most common classes and their counts from the most common to the least.
         c = collections.Counter(y)
         mc = c.most_common()
-        #print(f'class most common: {mc}')
+        logger.debug(f'class most common: {mc}')
         if self.balance:
             class_weights = {c : mc[0][1] / cnt for c, cnt in mc}
         else:
             class_weights = {c : 1 for c, _ in mc}
-        #print(f'class_weights: {class_weights}')
+        logger.debug(f'class_weights: {class_weights}')
 
         # Generate augmented data.
         # Runs forever. Loop needs to be broken by calling function.
@@ -208,15 +208,15 @@ class DataGenerator(object):
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """Generate model confusion matrix and classification report."""
-    print('\n Evaluating model.')
+    logger.info('\n Evaluating model.')
     y_pred = model.predict(X_test)
     cm = metrics.confusion_matrix(y_test, y_pred)
-    print(f'\n Confusion matrix:\n{cm}')
+    logger.info(f'\n Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
     cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
-    print('\n Classification matrix:')
-    print(metrics.classification_report(y_test, y_pred, target_names=target_names))
+    logger.info('\n Classification matrix:')
+    logger.info(metrics.classification_report(y_test, y_pred, target_names=target_names))
     return
 
 def balance_classes(labels, data):
@@ -340,12 +340,12 @@ def find_best_sgd_svm_estimator(X, y, cv, random_seed):
     grid_search.fit(X, y)
     #print('\n All results:')
     #print(grid_search.cv_results_)
-    print('\n Best estimator:')
-    print(grid_search.best_estimator_)
-    print('\n Best score for {}-fold search:'.format(FOLDS))
-    print(grid_search.best_score_)
-    print('\n Best hyperparameters:')
-    print(grid_search.best_params_)
+    logger.info('\n Best estimator:')
+    logger.info(grid_search.best_estimator_)
+    logger.info('\n Best score for {}-fold search:'.format(FOLDS))
+    logger.info(grid_search.best_score_)
+    logger.info('\n Best hyperparameters:')
+    logger.info(grid_search.best_params_)
     return grid_search.best_estimator_
 
 def fit(data,
@@ -354,29 +354,44 @@ def fit(data,
         online_learn,
         epochs,
         svm_cm):
+    """ Fit SVM using SGD on dataset. 
+        Write fitted model and evaluation results to disk.
+
+    Note:
+        See related global constants FOLDS and BATCH_SIZE.
+
+    Args:
+        data (dict): Radar projection samples and corresponding labels.
+        desired_labels (list): Class labels to use for training.
+        proj_mask (list): Radar projections to use for training.
+        online_learn (bool): If True perform online learning with data.
+        epochs (int): Number of times to augment data.
+        svm_cm (str): Confusion matrix name from test set evaluation.
+    """
+
     # Filter desired classes.
     desired = list(map(lambda x: 1 if x in desired_labels else 0, data['labels']))
 
     # Samples are in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
     samples = [s for i, s in enumerate(data['samples']) if desired[i]]
     # Scale each feature to the [0, 1] range without breaking the sparsity.
-    print('Scaling samples.')
+    logger.info('Scaling samples.')
     samples = [[p / common.RADAR_MAX for p in s] for s in samples]
 
     # Encode the labels.
-    print('Encoding labels.')
+    logger.info('Encoding labels.')
     le = preprocessing.LabelEncoder()
     desired_labels = [l for i, l in enumerate(data['labels']) if desired[i]]
     encoded_labels = le.fit_transform(desired_labels)
     class_names = list(le.classes_)
 
     # Data set summary. 
-    print(f'Found {len(class_names)} classes and {len(desired_labels)} samples:')
+    logger.info(f'Found {len(class_names)} classes and {len(desired_labels)} samples:')
     for i, c in enumerate(class_names):
-        print(f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
+        logger.info(f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
 
     # Split data and labels up into train and test sets.
-    print('Splitting data into train and test sets.')
+    logger.info('Splitting data into train and test sets.')
     X_train, X_test, y_train, y_test = model_selection.train_test_split(
         samples, encoded_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
@@ -394,55 +409,53 @@ def fit(data,
 
     if not online_learn: 
         # Find best initial classifier.
-        print('Fitting best classifier.')
+        logger.info('Fitting best classifier.')
         skf = model_selection.StratifiedKFold(n_splits=FOLDS)
         clf = find_best_sgd_svm_estimator(X_train, y_train,
             skf.split(X_train, y_train), RANDOM_SEED)
     else:
         # Fit existing classifier with new data.
-        print('Fitting classifier with with new data.')
+        logger.info('Fitting classifier with with new data.')
         with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
             clf = pickle.load(fp)
         max_iter = max(np.ceil(10**6 / len(X_train)), 1000)
         for i in range(max_iter):
             clf.partial_fit(X_train, y_train)
             y_predicted = clf.predict(X_test)
-            print(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
+            logger.info(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
 
     y_predicted = clf.predict(X_test)
-    print(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
+    logger.info(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
 
     # Augment training set and do partial fits on it.
-    print('Fitting classifier with augmented data.')
+    logger.info('Fitting classifier.')
     data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
     for e in range(epochs):
-        print(f'augment epoch: {e}')
+        logger.debug(f'augment epoch: {e}')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
-            print(f'augment batch: {batch}')
+            logger.debug(f'augment batch: {batch}')
             X_batch = common.process_samples(X_batch,
                 proj_mask=common.ProjMask(*proj_mask))
             y_batch, X_batch = balance_classes(y_batch, X_batch)
             clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
             y_predicted = clf.predict(X_test)
-            print(f'augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
+            logger.debug(f'augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
             batch += 1
             if batch >= len(xc) / BATCH_SIZE:
                 break
 
-    print('Evaluating final classifier.')
+    logger.info('Evaluating final classifier.')
     evaluate_model(clf, X_test, y_test, class_names, svm_cm)
 
-    print('Saving svm model.')
+    logger.info('Saving svm model.')
     with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
         outfile.write(pickle.dumps(clf))
 
     if not online_learn:
-        print('Saving label encoder.')
+        logger.info('Saving label encoder.')
         with open(os.path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
             outfile.write(pickle.dumps(le))
-
-    return
 
 if __name__ == '__main__':
     # Training datasets.
@@ -493,14 +506,14 @@ if __name__ == '__main__':
     samples = []
     labels = []
     for dataset in args.datasets:
-        print(f'Opening dataset: {dataset}')
+        logger.info(f'Opening dataset: {dataset}')
         try:
             with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
                 data_pickle = pickle.load(fp)
         except FileNotFoundError as e:
-            print(f'Dataset not found: {e}')
+            logger.error(f'Dataset not found: {e}')
             exit(1)
-        print(f'Found {set(data_pickle["labels"])}.')
+        logger.info(f'Found {set(data_pickle["labels"])}.')
         samples.extend(data_pickle['samples'])
         labels.extend(data_pickle['labels'])
     data = {'samples': samples, 'labels': labels}

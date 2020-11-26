@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 RANDOM_SEED = 1234
 # Define number of folds for the Stratified K-Folds cross-validator.
 FOLDS = 5
+# Fraction of samples used for model evaluation.
+TEST_SIZE = 0.2
 # Augment batch size.
 BATCH_SIZE = 32
 # Log file name.
@@ -208,16 +210,15 @@ class DataGenerator(object):
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """Generate model confusion matrix and classification report."""
-    logger.info('\n Evaluating model.')
     y_pred = model.predict(X_test)
+    logger.info(f'Accuracy: {metrics.accuracy_score(y_test, y_pred)}')
     cm = metrics.confusion_matrix(y_test, y_pred)
-    logger.info(f'\n Confusion matrix:\n{cm}')
+    logger.info(f'Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
     cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
-    logger.info('\n Classification matrix:')
+    logger.info('Classification matrix:')
     logger.info(metrics.classification_report(y_test, y_pred, target_names=target_names))
-    return
 
 def balance_classes(labels, data):
     """Balance classess."""
@@ -358,7 +359,7 @@ def fit(data,
         Write fitted model and evaluation results to disk.
 
     Note:
-        See related global constants FOLDS and BATCH_SIZE.
+        See related global constants FOLDS, BATCH_SIZE, TEST_SIZE.
 
     Args:
         data (dict): Radar projection samples and corresponding labels.
@@ -391,9 +392,9 @@ def fit(data,
         logger.info(f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
 
     # Split data and labels up into train and test sets.
-    logger.info('Splitting data into train and test sets.')
+    logger.info(f'Splitting data into train and test sets (test size={TEST_SIZE}).')
     X_train, X_test, y_train, y_test = model_selection.train_test_split(
-        samples, encoded_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
+        samples, encoded_labels, test_size=TEST_SIZE, random_state=RANDOM_SEED, shuffle=True)
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
     # Copy data set for use in augmentation.
@@ -421,26 +422,24 @@ def fit(data,
         max_iter = max(np.ceil(10**6 / len(X_train)), 1000)
         for i in range(max_iter):
             clf.partial_fit(X_train, y_train)
-            y_predicted = clf.predict(X_test)
-            logger.info(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
 
     y_predicted = clf.predict(X_test)
-    logger.info(f'un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
+    logger.debug(f'Un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
 
     # Augment training set and do partial fits on it.
-    logger.info('Fitting classifier.')
     data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
+    logger.debug(f'Augment epochs: {epochs}.')
     for e in range(epochs):
-        logger.debug(f'augment epoch: {e}')
+        logger.debug(f'Augment epoch: {e}.')
         batch = 0
         for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
-            logger.debug(f'augment batch: {batch}')
+            logger.debug(f'Augment batch: {batch}.')
             X_batch = common.process_samples(X_batch,
                 proj_mask=common.ProjMask(*proj_mask))
             y_batch, X_batch = balance_classes(y_batch, X_batch)
             clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
             y_predicted = clf.predict(X_test)
-            logger.debug(f'augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}')
+            logger.debug(f'Augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
             batch += 1
             if batch >= len(xc) / BATCH_SIZE:
                 break
@@ -448,13 +447,15 @@ def fit(data,
     logger.info('Evaluating final classifier.')
     evaluate_model(clf, X_test, y_test, class_names, svm_cm)
 
-    logger.info('Saving svm model.')
-    with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
+    path = os.path.join(common.PRJ_DIR, common.SVM_MODEL)
+    logger.info('Saving svm model to: {path}.')
+    with open(path, 'wb') as outfile:
         outfile.write(pickle.dumps(clf))
 
     if not online_learn:
-        logger.info('Saving label encoder.')
-        with open(os.path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
+        path = os.path.join(common.PRJ_DIR, common.LABELS)
+        logger.info('Saving label encoder to: {path}.')
+        with open(path, 'wb') as outfile:
             outfile.write(pickle.dumps(le))
 
 if __name__ == '__main__':
@@ -513,7 +514,7 @@ if __name__ == '__main__':
         except FileNotFoundError as e:
             logger.error(f'Dataset not found: {e}')
             exit(1)
-        logger.info(f'Found {set(data_pickle["labels"])}.')
+        logger.info(f'Found class labels: {set(data_pickle["labels"])}.')
         samples.extend(data_pickle['samples'])
         labels.extend(data_pickle['labels'])
     data = {'samples': samples, 'labels': labels}

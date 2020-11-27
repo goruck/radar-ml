@@ -398,10 +398,16 @@ def fit(data,
         samples, encoded_labels, test_size=TEST_SIZE, random_state=RANDOM_SEED, shuffle=True)
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
+    # Make a copy of train set for later use in augmentation. 
+    if epochs:
+        xc = X_train.copy()
+        yc = y_train.copy()
+
     # Generate feature vectors from radar projections.
     logger.info('Generating feature vectors.')
     X_train = common.process_samples(X_train, proj_mask=common.ProjMask(*proj_mask))
     X_test = common.process_samples(X_test, proj_mask=common.ProjMask(*proj_mask))
+    logger.info(f'Feature vector length: {X_train.shape[1]}')
 
     # Balance classes.
     logger.info('Balancing classes.')
@@ -428,8 +434,6 @@ def fit(data,
     # Augment training set and use to run partial fits on classifier.
     if epochs:
         logger.info(f'Running partial fit with augmented data (epochs: {epochs}).')
-        xc = X_train.copy()
-        yc = y_train.copy()
         data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
         for e in range(epochs):
             logger.debug(f'Augment epoch: {e}.')

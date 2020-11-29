@@ -530,7 +530,7 @@ def svc_fit(
 
 if __name__ == '__main__':
     # Log file name.
-    default_log_file = 'train.log'
+    default_log_file = 'train-results/train.log'
     # Training datasets.
     default_datasets = ['datasets/radar_samples.pickle']
     # SVM confusion matrix name.

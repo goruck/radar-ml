@@ -451,8 +451,8 @@ def svc_fit(
             https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
         """
         print('\n Finding best svm estimator...')
-        Cs = [0.001, 0.01, 0.1, 1, 10, 100]
-        gammas = [0.001, 0.01, 0.1, 1, 10, 100]
+        Cs = [0.01, 0.1, 1, 10]
+        gammas = [0.01, 0.1, 1, 10]
         param_grid = [
             {'C': Cs, 'kernel': ['linear']},
             {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}
@@ -460,7 +460,7 @@ def svc_fit(
         init_est = svm.SVC(probability=True, class_weight='balanced',
             random_state=random_seed, cache_size=1000, verbose=False)
         grid_search = model_selection.GridSearchCV(estimator=init_est,
-            param_grid=param_grid, verbose=1, n_jobs=4, cv=cv)
+            param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
         grid_search.fit(X, y)
         #print('\n All results:')
         #print(grid_search.cv_results_)

@@ -28,7 +28,9 @@ RANDOM_SEED = 1234
 
 class DataGenerator(object):
     """Generate augmented radar data."""
-    def __init__(self, rotation_range=None, zoom_range=None, noise_sd=None, balance=True):
+    def __init__(
+            self, rotation_range=None, zoom_range=None,
+            noise_sd=None, balance=False):
         """Initialize generator behavior.
 
         Note:
@@ -45,7 +47,9 @@ class DataGenerator(object):
         self.noise_sd = noise_sd
         self.balance = balance
 
-    def flow(self, x, y, batch_size=32, save_to_dir=None, save_prefix='./datasets/augment'):
+    def flow(
+            self, x, y, batch_size=32, save_to_dir=None,
+            save_prefix='./datasets/augment'):
         """Yield batches of augmented radar data.
 
         Args:
@@ -512,8 +516,6 @@ def svc_fit(
     logger.info(f'Feature vector length: {X_train.shape[1]}')
 
     # Balance classes.
-    # This replicates minority class samples.
-    # If used augmenting may not result in perfect balance so fine-tune.
     logger.info('Balancing classes.')
     y_train, X_train = balance_classes(y_train, X_train)
 

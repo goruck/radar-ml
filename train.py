@@ -664,7 +664,9 @@ if __name__ == '__main__':
             )
 
     logger.info('Evaluating final classifier on test set.')
-    evaluate_model(clf, X_test, y_test, class_names, args.svm_cm)
+    # Compute X_test feature vectors.
+    X_test_fv = common.process_samples(X_test, proj_mask=proj_mask)
+    evaluate_model(clf, X_test_fv, y_test, class_names, args.svm_cm)
 
     path = os.path.join(common.PRJ_DIR, args.svm_model)
     logger.info(f'Saving svm model to: {path}.')

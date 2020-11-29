@@ -206,10 +206,11 @@ def evaluate_model(model, X_test, y_test, target_names, cm_name):
     cm = metrics.confusion_matrix(y_test, y_pred)
     logger.info(f'Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
-    cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
+    logger.info(f'Saving confusion matrix plot to: {cm_name}')
+    cm_figure.savefig(cm_name)
     cm_figure.clf()
-    logger.info('Classification matrix:')
-    logger.info(metrics.classification_report(y_test, y_pred, target_names=target_names))
+    cls_report = metrics.classification_report(y_test, y_pred, target_names=target_names)
+    logger.info(f'Classification report:\n{cls_report}')
 
 def balance_classes(labels, data):
     """Balance classess."""
@@ -668,14 +669,12 @@ if __name__ == '__main__':
     X_test_fv = common.process_samples(X_test, proj_mask=proj_mask)
     evaluate_model(clf, X_test_fv, y_test, class_names, args.svm_cm)
 
-    path = os.path.join(common.PRJ_DIR, args.svm_model)
-    logger.info(f'Saving svm model to: {path}.')
-    with open(path, 'wb') as outfile:
+    logger.info(f'Saving svm model to: {args.svm_model}.')
+    with open(args.svm_model, 'wb') as outfile:
         outfile.write(pickle.dumps(clf))
 
     # Do not overwrite label encoder if online learning was performed.
     if not args.online_learn or args.use_svc:
-        path = os.path.join(common.PRJ_DIR, args.label_encoder)
-        logger.info(f'Saving label encoder to: {path}.')
-        with open(path, 'wb') as outfile:
+        logger.info(f'Saving label encoder to: {args.label_encoder}.')
+        with open(args.label_encoder, 'wb') as outfile:
             outfile.write(pickle.dumps(le))

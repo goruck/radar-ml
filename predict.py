@@ -69,13 +69,7 @@ def classifier(observation, model, le, min_proba=0.7):
 
     return name, proba
 
-def predict(min_proba):
-    # Load classifier along with the label encoder.
-    with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'rb') as fp:
-        model = pickle.load(fp)
-    with open(os.path.join(common.PRJ_DIR, common.LABELS), 'rb') as fp:
-        le = pickle.load(fp)
-
+def predict(min_proba, model, le, proj_mask):
     # Calculate size of radar image data array used for training. 
     train_size_z = int((common.R_MAX - common.R_MIN) / common.R_RES) + 1
     train_size_y = int((common.PHI_MAX - common.PHI_MIN) / common.PHI_RES) + 1
@@ -117,7 +111,7 @@ def predict(min_proba):
 
                 observation = common.process_samples(
                     [(projection_xz, projection_yz, projection_xy)],
-                    proj_mask=PROJ_MASK,
+                    proj_mask=proj_mask,
                     proj_zoom=proj_zoom,
                     scale=True)
 
@@ -137,6 +131,13 @@ def predict(min_proba):
     return
 
 if __name__ == '__main__':
+    # SVM model name.
+    default_svm_model = 'train-results/svm_radar_classifier.pickle'
+    # Label encoder name.
+    default_label_encoder = 'train-results/radar_labels.pickle'
+    # Radar 2-D projections to use for predictions (xy, xz, yz).
+    default_proj_mask = [True, True, True]
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--logging_level', type=str,
         help='logging level, "info" or "debug"',
@@ -144,6 +145,15 @@ if __name__ == '__main__':
     parser.add_argument('--min_proba', type=float,
         help='minimum prediction probability',
         default=0.7)
+    parser.add_argument('--svm_model', type=str,
+        help='path of output svm model name',
+        default=os.path.join(common.PRJ_DIR, default_svm_model))
+    parser.add_argument('--label_encoder', type=str,
+        help='path of output label encoder',
+        default=os.path.join(common.PRJ_DIR, default_label_encoder))
+    parser.add_argument('--proj_mask', nargs='+', type=bool,
+        help='projection mask (xy, xz, yz)',
+        default=default_proj_mask)
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -205,4 +215,13 @@ if __name__ == '__main__':
     frame_rate = radar.GetAdvancedParameter('FrameRate')
     logger.info(f'radar frame rate: {frame_rate}')
 
-    predict(min_proba=args.min_proba)
+    # Load classifier along with the label encoder.
+    with open(args.svm_model, 'rb') as fp:
+        model = pickle.load(fp)
+    with open(args.label_encoder, 'rb') as fp:
+        le = pickle.load(fp)
+
+    proj_mask=common.ProjMask(*args.proj_mask)
+    logger.info(f'Projection mask: {proj_mask}')
+
+    predict(min_proba=args.min_proba, model=model, le=le, proj_mask=proj_mask)

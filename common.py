@@ -5,11 +5,16 @@ Copyright (c) 2020 Lindo St. Angel.
 """
 
 import collections
+import pickle
+import os
+import logging
 
 import numpy as np
-import scipy.ndimage
+from scipy import ndimage
 
 import WalabotAPI as radar
+
+logger = logging.getLogger(__name__)
 
 # Radar scan arena in spherical (r-Θ-Φ) coordinates from radar unit origin.
 # Radial distance (R) is along the Z axis. In cm.
@@ -30,15 +35,6 @@ RADAR_PROFILE = radar.PROF_SENSOR
 
 # Project directory path. 
 PRJ_DIR = './'
-
-# Radar samples with ground truth lables.
-RADAR_DATA = 'datasets/radar_samples.pickle'
-# SVM model name.
-SVM_MODEL = 'train-results/svm_radar_classifier_all_sgd.pickle'
-# XGBoost model name.
-XGB_MODEL = 'train-results/xgb_radar_classifier.pickle'
-# Label encoder name.
-LABELS = 'train-results/radar_labels.pickle'
 
 # Radar 2-D projections to use for predictions.
 ProjMask = collections.namedtuple('ProjMask', ['xz', 'yz', 'xy'])
@@ -144,7 +140,7 @@ def process_samples(samples, proj_mask=ProjMask(xz=True,yz=True,xy=True),
     """
     def make(t):
         # Get projections of interest and zoom them.
-        wanted_projections = tuple(scipy.ndimage.zoom(p, proj_zoom[i])
+        wanted_projections = tuple(ndimage.zoom(p, proj_zoom[i])
             for i, p in enumerate(t) if proj_mask[i])
         # Concatenate into a flattened feature vector.
         concat_projections = np.concatenate(wanted_projections, axis=None)

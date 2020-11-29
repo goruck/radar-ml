@@ -1,44 +1,30 @@
 """
-Train SVM- and XGB-based classifiers on radar data.
+Train SVM classifier using SGD or SVC on radar data.
 
 Copyright (c) 2020 Lindo St. Angel
 """
 
 import os
-#import sys
 import collections
-import itertools
-import functools
 import pickle
-import random
+import argparse
+import logging
+import sys
+import functools
+import itertools
 
 import numpy as np
-import matplotlib.pyplot as plt
-from sklearn import (model_selection, metrics, preprocessing, utils,
-    svm, linear_model)
 from scipy import ndimage
-#import xgboost as xgb
+import matplotlib.pyplot as plt
+from sklearn import (model_selection, metrics, preprocessing, linear_model,
+    svm, utils)
 
 import common
 
-#np.set_printoptions(threshold=sys.maxsize)
+logger = logging.getLogger(__name__)
 
-# Output SVM confusion matrix name.
-SVM_CM = 'train-results/svm_cm.png'
-# Output XGBoost confusion matrix name.
-XGB_CM = 'train-results/xgb_cm.png'
 # Define a seed so random operations are the same from run to run.
 RANDOM_SEED = 1234
-# Define number of folds for the Stratified K-Folds cross-validator.
-FOLDS = 5
-# Number of parameters to combine for xgb random search. 
-PARA_COMB = 20
-# Radar 2-D projections to use for predictions.
-PROJ_MASK = common.ProjMask(xy=True, xz=True, yz=True)
-# Each epoch augments entire data set. Set to zero to disable.
-EPOCHS = 5
-# Augment batch size.
-BATCH_SIZE = 32
 
 class DataGenerator(object):
     """Generate augmented radar data."""
@@ -49,8 +35,8 @@ class DataGenerator(object):
             Augmenting data with balance set may not result in perfect balance.
 
         Args:
-            rotation_range (float): Range of angles to rotate data [0, rotation_range].
-            zoom_range (float): Range of scale factors to zoom data [-zoom_range, +zoom_range].
+            rotation_range (float): Range of angles to rotate data [-rotation_range, rotation_range].
+            zoom_range (float): Range of scale factors to zoom data [1-zoom_range, 1+zoom_range].
             noise_sd (float): Standard deviation of Gaussian noise added to data.
             balance: (bool): Balance classes while augmenting data.
         """
@@ -71,7 +57,7 @@ class DataGenerator(object):
 
         Yields:
             x_batch (list of np.array): Batch of augmented data.
-            y_batch (list of int): Batch of augmented lables.
+            y_batch (np.array): Batch of augmented lables.
 
         Examples:
             for e in range(EPOCHS):
@@ -89,7 +75,7 @@ class DataGenerator(object):
 
             def rotate(p):
                 """Rotate projection."""
-                angle = np.random.uniform(0, self.rotation_range)
+                angle = np.random.uniform(-1*self.rotation_range, self.rotation_range)
                 out = ndimage.rotate(p, angle, reshape=False)
                 # Clamp to [0,1].
                 out[out>1.0] = 1.0
@@ -172,7 +158,8 @@ class DataGenerator(object):
                     # Generate new tuple of zoomed projections.
                     # Use same zoom scale for all projections.
                     if self.zoom_range is not None:
-                        zoom_factor = np.random.uniform(1.0 - self.zoom_range, 1.0 + self.zoom_range)
+                        zoom_factor = np.random.uniform(1.0 - self.zoom_range,
+                            1.0 + self.zoom_range)
                         new_t = tuple(clipped_zoom(p, zoom_factor) for p in xb)
                         aug_x.append(new_t)
                         aug_y.append(yb)
@@ -182,18 +169,18 @@ class DataGenerator(object):
                         new_t = tuple(sparse_noise(p, self.noise_sd) for p in xb)
                         aug_x.append(new_t)
                         aug_y.append(yb)
-            return aug_x, aug_y
+            return aug_x, np.array(aug_y)
 
         # Determine parameters to balance data.
         # Most common classes and their counts from the most common to the least.
         c = collections.Counter(y)
         mc = c.most_common()
-        print(f'class most common: {mc}')
+        logger.debug(f'class most common: {mc}')
         if self.balance:
             class_weights = {c : mc[0][1] / cnt for c, cnt in mc}
         else:
             class_weights = {c : 1 for c, _ in mc}
-        print(f'class_weights: {class_weights}')
+        logger.debug(f'class_weights: {class_weights}')
 
         # Generate augmented data.
         # Runs forever. Loop needs to be broken by calling function.
@@ -214,16 +201,15 @@ class DataGenerator(object):
 
 def evaluate_model(model, X_test, y_test, target_names, cm_name):
     """Generate model confusion matrix and classification report."""
-    print('\n Evaluating model.')
     y_pred = model.predict(X_test)
+    logger.info(f'Accuracy: {metrics.accuracy_score(y_test, y_pred)}')
     cm = metrics.confusion_matrix(y_test, y_pred)
-    print(f'\n Confusion matrix:\n{cm}')
+    logger.info(f'Confusion matrix:\n{cm}')
     cm_figure = plot_confusion_matrix(cm, class_names=target_names)
     cm_figure.savefig(os.path.join(common.PRJ_DIR, cm_name))
     cm_figure.clf()
-    print('\n Classification matrix:')
-    print(metrics.classification_report(y_test, y_pred, target_names=target_names))
-    return
+    logger.info('Classification matrix:')
+    logger.info(metrics.classification_report(y_test, y_pred, target_names=target_names))
 
 def balance_classes(labels, data):
     """Balance classess."""
@@ -234,9 +220,9 @@ def balance_classes(labels, data):
     # Return if already balanced.
     if len(set([c for _, c in mc])) == 1: return labels, data
 
-    print(f'Unbalanced most common: {mc}')
-    print(f'Unbalanced label len: {len(labels)}')
-    print(f'Unbalanced data len: {len(data)}')
+    #print(f'Unbalanced most common: {mc}')
+    #print(f'Unbalanced label len: {len(labels)}')
+    #print(f'Unbalanced data len: {len(data)}')
     
     # Build a list of class indices from most common rankings.
     indices = [np.nonzero(labels==i)[0] for (i, _) in mc]
@@ -257,15 +243,17 @@ def balance_classes(labels, data):
     labels_upsampled = [upsample(label) for label in labels_list]
 
     # Recombine the separate, and now upsampled, label and data sets. 
-    data_balanced = functools.reduce(lambda a, b: np.vstack((a, b)), data_upsampled)
-    labels_balanced = functools.reduce(lambda a, b: np.concatenate((a, b)), labels_upsampled)
+    data_balanced = functools.reduce(
+        lambda a, b: np.vstack((a, b)), data_upsampled)
+    labels_balanced = functools.reduce(
+        lambda a, b: np.concatenate((a, b)), labels_upsampled)
 
     c = collections.Counter(labels_balanced)
     mc = c.most_common()
 
-    print(f'Balanced most common: {mc}')
-    print(f'Balanced label len: {len(labels_balanced)}')
-    print(f'Balanced data len: {len(data_balanced)}')
+    #print(f'Balanced most common: {mc}')
+    #print(f'Balanced label len: {len(labels_balanced)}')
+    #print(f'Balanced data len: {len(data_balanced)}')
     
     return labels_balanced, data_balanced
 
@@ -286,8 +274,6 @@ def plot_dataset(labels, data):
 
     plt.show()
 
-    return
-
 def plot_confusion_matrix(cm, class_names):
     """Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -298,7 +284,7 @@ def plot_confusion_matrix(cm, class_names):
     figure = plt.figure(figsize=(8, 8))
     ax = plt.gca()
     im = ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    plt.title("Confusion matrix")
+    plt.title('Confusion matrix')
     plt.colorbar(im, fraction=0.046, pad=0.04)
     tick_marks = np.arange(len(class_names))
     plt.xticks(tick_marks, class_names, rotation=45)
@@ -310,8 +296,8 @@ def plot_confusion_matrix(cm, class_names):
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.
     for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        color = "white" if cm[i, j] > threshold else "black"
-        plt.text(j, i, cm[i, j], horizontalalignment="center", color=color)
+        color = 'white' if cm[i, j] > threshold else 'black'
+        plt.text(j, i, cm[i, j], horizontalalignment='center', color=color)
 
     plt.tight_layout()
     plt.ylabel('True label')
@@ -319,216 +305,375 @@ def plot_confusion_matrix(cm, class_names):
 
     return figure
 
-def find_best_svm_estimator(X, y, cv, random_seed):
-    """Exhaustive search over specified parameter values for svm.
+def sgd_fit(
+        train,
+        test,
+        proj_mask,
+        online_learn,
+        svm_model,
+        epochs,
+        folds=5,
+        batch_size=32):
+    """ Fit SVM using SGD on data set. 
 
-    Note:
-        https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
-
-    Returns:
-        optimized svm estimator.
-    """
-    print('\n Finding best svm estimator...')
-    Cs = [0.001, 0.01, 0.1, 1, 10, 100]
-    gammas = [0.001, 0.01, 0.1, 1, 10, 100]
-    # Disable search over gamma since cycles are high for little benefit.
-    param_grid = [
-        {'C': Cs, 'kernel': ['linear']}]
-        #{'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}]
-    init_est = svm.SVC(probability=True, class_weight='balanced',
-        random_state=random_seed, cache_size=1000, verbose=False)
-    grid_search = model_selection.GridSearchCV(estimator=init_est,
-        param_grid=param_grid, verbose=1, n_jobs=4, cv=cv)
-    grid_search.fit(X, y)
-    #print('\n All results:')
-    #print(grid_search.cv_results_)
-    print('\n Best estimator:')
-    print(grid_search.best_estimator_)
-    print('\n Best score for {}-fold search:'.format(FOLDS))
-    print(grid_search.best_score_)
-    print('\n Best hyperparameters:')
-    print(grid_search.best_params_)
-    return grid_search.best_estimator_
-
-def find_best_linear_svm_estimator(X, y, cv, random_seed):
-    """Exhaustive search over specified parameter values for linear svm.
+    Args:
+        train (tuple of list): (X, y) train data.
+        test (tuple of list): (X, y) test data.
+        proj_mask (Namedtuple): Radar projections to use for training.
+        online_learn (bool): If True perform online learning with data.
+        svm_model (str): Name of existing svm model for online learning.
+        epochs (int): Number of times to augment data.
+        folds (int, optional): Number of folds for the Stratified K-Folds
+            cross-validator. Default=5
+        batch_size (int, optional): Augment batch size. Default=32.
 
     Returns:
-        optimized svm estimator.
+        estimator: Estimator that was chosen by grid search.
     """
-    print('Finding best linear svm estimator.')
-    Cs = [0.1, 1, 10]
-    param_grid = [{'C': Cs}]
-    init_est = svm.LinearSVC(random_state=random_seed, dual=False)
-    grid_search = model_selection.GridSearchCV(estimator=init_est,
-        param_grid=param_grid, verbose=2, n_jobs=2, cv=cv)
-    grid_search.fit(X, y)
-    #print('\n All results:')
-    #print(grid_search.cv_results_)
-    print('\n Best estimator:')
-    print(grid_search.best_estimator_)
-    print('\n Best score for {}-fold search:'.format(FOLDS))
-    print(grid_search.best_score_)
-    print('\n Best hyperparameters:')
-    print(grid_search.best_params_)
-    return grid_search.best_estimator_
 
-def find_best_sgd_svm_estimator(X, y, cv, random_seed):
-    """Exhaustive search over specified parameter values for svm using sgd.
+    def find_best_sgd_svm_estimator(X, y, cv, random_seed):
+        """Exhaustive search over specified parameter values for svm using sgd.
+
+        Returns:
+            optimized svm estimator.
+        """
+        max_iter = max(np.ceil(10**6 / len(X)), 1000)
+        small_alphas = [10.0e-08, 10.0e-09, 10.0e-10]
+        alphas = [10.0e-04, 10.0e-05, 10.0e-06, 10.0e-07]
+        l1_ratios = [0.075, 0.15, 0.30]
+        param_grid = [
+            {'alpha': alphas, 'penalty': ['l1', 'l2'], 'average':[False]},
+            {'alpha': alphas, 'penalty': ['elasticnet'], 'average':[False],
+            'l1_ratio': l1_ratios},
+            {'alpha': small_alphas, 'penalty': ['l1', 'l2'], 'average':[True]},
+            {'alpha': small_alphas, 'penalty': ['elasticnet'], 'average':[True],
+            'l1_ratio': l1_ratios}
+            ]
+        init_est = linear_model.SGDClassifier(loss='log', max_iter=max_iter,
+            random_state=random_seed, n_jobs=-1, warm_start=True)
+        grid_search = model_selection.GridSearchCV(estimator=init_est,
+            param_grid=param_grid, verbose=2, n_jobs=-1, cv=cv)
+        grid_search.fit(X, y)
+        #print('\n All results:')
+        #print(grid_search.cv_results_)
+        logger.info('\n Best estimator:')
+        logger.info(grid_search.best_estimator_)
+        logger.info('\n Best score for {}-fold search:'.format(folds))
+        logger.info(grid_search.best_score_)
+        logger.info('\n Best hyperparameters:')
+        logger.info(grid_search.best_params_)
+        return grid_search.best_estimator_
+
+    X_train, y_train = train
+    X_test, y_test = test
+
+    # Make a copy of train set for later use in augmentation. 
+    if epochs:
+        xc = X_train.copy()
+        yc = y_train.copy()
+
+    # Generate feature vectors from radar projections.
+    logger.info('Generating feature vectors.')
+    X_train = common.process_samples(X_train, proj_mask=proj_mask)
+    X_test = common.process_samples(X_test, proj_mask=proj_mask)
+    logger.info(f'Feature vector length: {X_train.shape[1]}')
+
+    # Balance classes.
+    logger.info('Balancing classes.')
+    y_train, X_train = balance_classes(y_train, X_train)
+
+    if not online_learn: 
+        # Find best initial classifier.
+        logger.info('Running best fit with new data.')
+        skf = model_selection.StratifiedKFold(n_splits=folds)
+        clf = find_best_sgd_svm_estimator(X_train, y_train,
+            skf.split(X_train, y_train), RANDOM_SEED)
+    else:
+        # Fit existing classifier with new data.
+        logger.info('Running partial fit with new data.')
+        with open(os.path.join(common.PRJ_DIR, svm_model), 'rb') as fp:
+            clf = pickle.load(fp)
+        max_iter = max(np.ceil(10**6 / len(X_train)), 1000)
+        for _ in range(max_iter):
+            clf.partial_fit(X_train, y_train)
+
+    # Augment training set and use to run partial fits on classifier.
+    if epochs:
+        logger.info(f'Running partial fit with augmented data (epochs: {epochs}).')
+        y_predicted = clf.predict(X_test)
+        logger.debug(f'Un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
+        data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
+        for e in range(epochs):
+            logger.debug(f'Augment epoch: {e}.')
+            batch = 0
+            for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=batch_size):
+                logger.debug(f'Augment batch: {batch}.')
+                X_batch = common.process_samples(X_batch, proj_mask=proj_mask)
+                y_batch, X_batch = balance_classes(y_batch, X_batch)
+                clf.partial_fit(X_batch, y_batch, classes=np.unique(y_train))
+                y_predicted = clf.predict(X_test)
+                acc = metrics.accuracy_score(y_test, y_predicted)
+                logger.debug(f'Augmented accuracy: {acc}.')
+                batch += 1
+                if batch >= len(xc) / batch_size:
+                    break
+
+    return clf
+
+def svc_fit(
+        train,
+        proj_mask,
+        epochs,
+        folds=5,
+        batch_size=32):
+    """ Fit SVM using SGD on data set. 
+
+    Args:
+        train (tuple of list): (X, y) train data.
+        proj_mask (Namedtuple): Radar projections to use for training.
+        epochs (int): Number of times to augment data.
+        folds (int, optional): Number of folds for the Stratified K-Folds
+            cross-validator. Default=5
+        batch_size (int, optional): Augment batch size. Default=32.
 
     Returns:
-        optimized svm estimator.
+        estimator: Estimator that was chosen by grid search.
     """
-    print('Finding best sgd svm estimator.')
-    max_iter = max(np.ceil(10**6 / len(X)), 1000)
-    alphas = [1.0e-01, 1.0e-02, 1.0e-03, 1.0e-04, 1.0e-05, 1.0e-06]
-    param_grid = {'alpha': alphas}
-    init_est = linear_model.SGDClassifier(loss='log', max_iter=max_iter,
-        random_state=random_seed, n_jobs=4, average=True)
-    grid_search = model_selection.GridSearchCV(estimator=init_est,
-        param_grid=param_grid, verbose=2, n_jobs=4, cv=cv)
-    grid_search.fit(X, y)
-    #print('\n All results:')
-    #print(grid_search.cv_results_)
-    print('\n Best estimator:')
-    print(grid_search.best_estimator_)
-    print('\n Best score for {}-fold search:'.format(FOLDS))
-    print(grid_search.best_score_)
-    print('\n Best hyperparameters:')
-    print(grid_search.best_params_)
-    return grid_search.best_estimator_
 
-def find_best_xgb_estimator(X, y, cv, param_comb, random_seed):
-    """Random search over specified parameter values for XGBoost.
+    def find_best_svm_estimator(X, y, cv, random_seed):
+        """Exhaustive search over specified parameter values for svm.
 
-    Note:
-        Exhaustive search takes many more cycles w/o much benefit.
-        Ref: https://www.kaggle.com/tilii7/hyperparameter-grid-search-with-xgboost
-        
-    Returns:
-        optimized XGBoost estimator.
-    """
-    print('\n Finding best XGBoost estimator...')
-    param_grid = {
-        'min_child_weight': [1, 5, 10],
-        'gamma': [0.5, 1, 1.5, 2, 5],
-        'subsample': [0.6, 0.8, 1.0],
-        'colsample_bytree': [0.6, 0.8, 1.0],
-        'max_depth': [3, 4, 5]
-        }
-    init_est = xgb.XGBClassifier(learning_rate=0.02, n_estimators=600, objective='multi:softprob',
-        verbose=1, n_jobs=1, random_state=random_seed)
-    random_search = model_selection.RandomizedSearchCV(estimator=init_est,
-        param_distributions=param_grid, n_iter=param_comb, n_jobs=4,
-        cv=cv, verbose=1, random_state=random_seed)
-    random_search.fit(X, y)
-    #print('\n All results:')
-    #print(random_search.cv_results_)
-    print('\n Best estimator:')
-    print(random_search.best_estimator_)
-    print('\n Best score for {}-fold search with {} parameter combinations:'
-        .format(FOLDS, PARA_COMB))
-    print(random_search.best_score_)
-    print('\n Best hyperparameters:')
-    print(random_search.best_params_)
-    return random_search.best_estimator_
+        Returns:
+            optimized svm estimator.
 
-def main():
-    # Load radar observations and labels. 
-    with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
-        data_pickle = pickle.load(fp)
+        Note:
+            https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
+        """
+        print('\n Finding best svm estimator...')
+        Cs = [0.001, 0.01, 0.1, 1, 10, 100]
+        gammas = [0.001, 0.01, 0.1, 1, 10, 100]
+        param_grid = [
+            {'C': Cs, 'kernel': ['linear']},
+            {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}
+            ]
+        init_est = svm.SVC(probability=True, class_weight='balanced',
+            random_state=random_seed, cache_size=1000, verbose=False)
+        grid_search = model_selection.GridSearchCV(estimator=init_est,
+            param_grid=param_grid, verbose=1, n_jobs=4, cv=cv)
+        grid_search.fit(X, y)
+        #print('\n All results:')
+        #print(grid_search.cv_results_)
+        logger.info('\n Best estimator:')
+        logger.info(grid_search.best_estimator_)
+        logger.info('\n Best score for {}-fold search:'.format(folds))
+        logger.info(grid_search.best_score_)
+        logger.info('\n Best hyperparameters:')
+        logger.info(grid_search.best_params_)
+        return grid_search.best_estimator_
 
-    # Samples are in the form [(xz, yz, xy), ...] and are in range [0, RADAR_MAX].
-    samples = data_pickle['samples']
-    #max_sample = np.amax([[np.concatenate(t, axis=None)] for t in samples])
-    #print(f'samples: {samples}')
-    # Scale each feature to the [0, 1] range without breaking the sparsity.
-    print('Scaling samples.')
-    samples = [[p / common.RADAR_MAX for p in s] for s in samples]
-    #max_sample = np.amax([[np.concatenate(t, axis=None)] for t in samples])
-    #print(f'sample max: {max_sample}')
-    #print(f'scaled samples: {samples}')
+    X_train, y_train = train
 
-    # Encode the labels.
-    print('Encoding labels.')
-    le = preprocessing.LabelEncoder()
-    encoded_labels = le.fit_transform(data_pickle['labels'])
-    class_names = list(le.classes_)
-    print(f'class names: {class_names}')
+     # Augment training set.
+    if epochs:
+        data_gen = DataGenerator(rotation_range=15.0, zoom_range=0.3, noise_sd=0.2)
+        logger.info('Augmenting dataset.')
+        logger.debug(f'X len: {len(X_train)}, y len: {len(y_train)}')
 
-    # Split data and labels up into train and test sets.
-    print('Splitting data into train and test sets.')
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(
-        samples, encoded_labels, test_size=0.20, random_state=RANDOM_SEED, shuffle=True)
-    #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
+        # Faster to use a list in below ops.
+        y_train = y_train.tolist()
 
-    # Augment training set.
-    data_gen = DataGenerator(rotation_range=15.0, zoom_range=0.3, noise_sd=0.2)
-    print('Augmenting dataset.')
-    print(f'X len: {len(X_train)}, y len: {len(y_train)}')
+        # Do not mutate original lists.
+        xc = X_train.copy()
+        yc = y_train.copy()
 
-    # Faster to use a list in below ops.
-    y_train = y_train.tolist()
-
-    # Do not mutate original lists.
-    xc = X_train.copy()
-    yc = y_train.copy()
-
-    for e in range(EPOCHS):
-        print(f'epoch: {e}')
-        batch = 0
-        for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=BATCH_SIZE):
-            print(f'batch: {batch}')
-            X_train.extend(X_batch)
-            y_train.extend(y_batch)
-            batch += 1
-            if batch >= len(xc) / BATCH_SIZE:
-                break
+        for e in range(epochs):
+            logger.debug(f'epoch: {e}')
+            batch = 0
+            for X_batch, y_batch in data_gen.flow(xc, yc, batch_size=batch_size):
+                logger.debug(f'batch: {batch}')
+                X_train.extend(X_batch)
+                y_train.extend(y_batch)
+                batch += 1
+                if batch >= len(xc) / batch_size:
+                    break
     
-    # Sanity check if augmentation introduced a scaling problem.
-    max = np.amax([[np.concatenate(t, axis=None)] for t in X_train])
-    assert abs(max - 1.0) < 1e-6, "scale error"
+        # Sanity check if augmentation introduced a scaling problem.
+        max = np.amax([[np.concatenate(t, axis=None)] for t in X_train])
+        assert abs(max - 1.0) < 1e-6, 'scale error'
 
-    print('Generating feature vectors from radar projections.')
-    X_train = common.process_samples(X_train, proj_mask=PROJ_MASK)
+        # Convert y_train back to np array.
+        y_train = np.array(y_train, dtype=np.int8)
 
-    # Convert y_train back to np array.
-    y_train = np.array(y_train, dtype=np.int8)
+    logger.info('Generating feature vectors from radar projections.')
+    X_train = common.process_samples(X_train, proj_mask=proj_mask)
+    logger.info(f'Feature vector length: {X_train.shape[1]}')
 
     # Balance classes.
     # This replicates minority class samples.
-    # Augmenting data may not result in perfect balance so this will fine-tune.
-    print('Balancing classes.')
+    # If used augmenting may not result in perfect balance so fine-tune.
+    logger.info('Balancing classes.')
     y_train, X_train = balance_classes(y_train, X_train)
 
-    skf = model_selection.StratifiedKFold(n_splits=FOLDS)
+    skf = model_selection.StratifiedKFold(n_splits=folds)
 
     # Find best classifier.
-    best_svm = find_best_sgd_svm_estimator(X_train, y_train,
-        skf.split(X_train, y_train), RANDOM_SEED)
+    logger.info('Finding best classifier.')
+    clf = find_best_svm_estimator(
+        X_train, y_train,
+        skf.split(X_train, y_train), RANDOM_SEED
+        )
 
-    print('Evaluating best svm classifier.')
-    X_test = common.process_samples(X_test, proj_mask=PROJ_MASK)
-    evaluate_model(best_svm, X_test, y_test, class_names, SVM_CM)
-
-    print('\n Saving svm model.')
-    with open(os.path.join(common.PRJ_DIR, common.SVM_MODEL), 'wb') as outfile:
-        outfile.write(pickle.dumps(best_svm))
-    """
-    # Find best XGBoost classifier, evaluate and save it. 
-    best_xgb = find_best_xgb_estimator(X_train, y_train, skf.split(X_train, y_train),
-        PARA_COMB, RANDOM_SEED)
-
-    evaluate_model(best_xgb, X_test, y_test, class_names, XGB_CM)
-
-    print('\n Saving xgb model...')
-    with open(os.path.join(common.PRJ_DIR, common.XGB_MODEL), 'wb') as outfile:
-        outfile.write(pickle.dumps(best_xgb))
-    """
-    # Write the label encoder to disk.
-    print('\n Saving label encoder.')
-    with open(os.path.join(common.PRJ_DIR, common.LABELS), 'wb') as outfile:
-        outfile.write(pickle.dumps(le))
+    return clf
 
 if __name__ == '__main__':
-    main()
+    # Log file name.
+    default_log_file = 'train.log'
+    # Training datasets.
+    default_datasets = ['datasets/radar_samples.pickle']
+    # SVM confusion matrix name.
+    default_svm_cm = 'train-results/svm_cm.png'
+    # SVM model name.
+    default_svm_model = 'train-results/svm_radar_classifier.pickle'
+    # Label encoder name.
+    default_label_encoder = 'train-results/radar_labels.pickle'
+    # Radar 2-D projections to use for predictions (xy, xz, yz).
+    default_proj_mask = [True, True, True]
+    # Labels to use for training. 
+    default_desired_labels = ['person', 'dog', 'cat']
+    # Each epoch augments entire data set (zero disables).
+    default_epochs = 2
+    # Fraction of samples used for model evaluation.
+    default_test_size=0.2
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--epochs', type=int,
+        help='number of augementation epochs',
+        default=default_epochs)
+    parser.add_argument('--datasets', nargs='+', type=str,
+        help='paths to training datasets',
+        default=default_datasets)
+    parser.add_argument('--desired_labels', nargs='+', type=str,
+        help='labels to use for training',
+        default=default_desired_labels)
+    parser.add_argument('--proj_mask', nargs='+', type=bool,
+        help='projection mask (xy, xz, yz)',
+        default=default_proj_mask)
+    parser.add_argument('--svm_cm', type=str,
+        help='path of output svm confusion matrix',
+        default=os.path.join(common.PRJ_DIR, default_svm_cm))
+    parser.add_argument('--svm_model', type=str,
+        help='path of output svm model name',
+        default=os.path.join(common.PRJ_DIR, default_svm_model))
+    parser.add_argument('--label_encoder', type=str,
+        help='path of output label encoder',
+        default=os.path.join(common.PRJ_DIR, default_label_encoder))
+    parser.add_argument('--logging_level', type=str,
+        help='logging level, "info" or "debug"',
+        default='info')
+    parser.add_argument('--online_learn', action='store_true',
+        help='use dataset(s) for online learning (ignored if --use_svc')
+    parser.add_argument('--use_svc', action='store_true',
+        help='use svm.SVC instead of linear_model.SGDClassifier')
+    parser.add_argument('--test_size', type=float,
+        help='fraction of samples used for model evaluation',
+        default=default_test_size)
+    parser.add_argument('--log_file', type=str,
+        help='path of output svm model name',
+        default=os.path.join(common.PRJ_DIR, default_log_file))
+    parser.set_defaults(online_learn=False)
+    parser.set_defaults(use_svc=False)
+    args = parser.parse_args()
+
+    logging.basicConfig(
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        level=logging.DEBUG if args.logging_level=='debug' else logging.INFO,
+        handlers=[
+            logging.FileHandler(args.log_file, mode='w'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+    # Combine multiple datasets if given.
+    samples = []
+    labels = []
+    for dataset in args.datasets:
+        logger.info(f'Opening dataset: {dataset}')
+        try:
+            with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
+                data_pickle = pickle.load(fp)
+        except FileNotFoundError as e:
+            logger.error(f'Dataset not found: {e}')
+            exit(1)
+        logger.debug(f'Found class labels: {set(data_pickle["labels"])}.')
+        samples.extend(data_pickle['samples'])
+        labels.extend(data_pickle['labels'])
+    data = {'samples': samples, 'labels': labels}
+
+    # Filter desired classes.
+    logger.info('Maybe filtering classes.')
+    desired = list(
+        map(lambda x: 1 if x in args.desired_labels else 0, data['labels'])
+        )
+
+    # Samples are in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+    samples = [s for i, s in enumerate(data['samples']) if desired[i]]
+
+    # Scale each feature to the [0, 1] range without breaking the sparsity.
+    logger.info('Scaling samples.')
+    samples = [[p / common.RADAR_MAX for p in s] for s in samples]
+
+    # Encode the labels.
+    logger.info('Encoding labels.')
+    le = preprocessing.LabelEncoder()
+    desired_labels = [l for i, l in enumerate(data['labels']) if desired[i]]
+    encoded_labels = le.fit_transform(desired_labels)
+    class_names = list(le.classes_)
+
+    # Data set summary. 
+    logger.info(f'Found {len(class_names)} classes and {len(desired_labels)} samples:')
+    for i, c in enumerate(class_names):
+        logger.info(f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
+
+    # Split data and labels up into train and test sets.
+    logger.info(f'Splitting data into train and test sets (test size={args.test_size}).')
+    X_train, X_test, y_train, y_test = model_selection.train_test_split(
+        samples, encoded_labels, test_size=args.test_size,
+        random_state=RANDOM_SEED, shuffle=True
+        )
+    #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
+
+    proj_mask=common.ProjMask(*args.proj_mask)
+    logger.info(f'Projection mask: {args.proj_mask}')
+
+    if not args.use_svc:
+        logger.info('Using SVM algo: SGDClassifier.')
+        clf = sgd_fit(
+            train=(X_train, y_train),
+            test=(X_test, y_test),
+            proj_mask=args.proj_mask,
+            online_learn=args.online_learn,
+            svm_model=args.svm_model,
+            epochs=args.epochs
+            )
+    else:
+        logger.info('Using SVM algo: SVC.')
+        clf = svc_fit(
+            train=(X_train, y_train),
+            proj_mask=args.proj_mask,
+            epochs=args.epochs
+            )
+
+    logger.info('Evaluating final classifier on test set.')
+    evaluate_model(clf, X_test, y_test, class_names, args.svm_cm)
+
+    path = os.path.join(common.PRJ_DIR, args.svm_model)
+    logger.info(f'Saving svm model to: {path}.')
+    with open(path, 'wb') as outfile:
+        outfile.write(pickle.dumps(clf))
+
+    # Do not overwrite label encoder if online learning was performed.
+    if not args.online_learn or args.use_svc:
+        path = os.path.join(common.PRJ_DIR, args.label_encoder)
+        logger.info(f'Saving label encoder to: {path}.')
+        with open(path, 'wb') as outfile:
+            outfile.write(pickle.dumps(le))

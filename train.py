@@ -427,7 +427,7 @@ def svc_fit(
         epochs,
         folds=5,
         batch_size=32):
-    """ Fit SVM using SGD on data set. 
+    """ Fit SVM using SVC on data set. 
 
     Args:
         train (tuple of list): (X, y) train data.
@@ -451,8 +451,8 @@ def svc_fit(
             https://www.csie.ntu.edu.tw/~cjlin/papers/guide/guide.pdf
         """
         print('\n Finding best svm estimator...')
-        Cs = [0.01, 0.1, 1, 10]
-        gammas = [0.01, 0.1, 1, 10]
+        Cs = [0.01, 0.1, 1, 10, 100]
+        gammas = [0.001, 0.01, 0.1, 1, 10]
         param_grid = [
             {'C': Cs, 'kernel': ['linear']},
             {'C': Cs, 'gamma': gammas, 'kernel': ['rbf']}
@@ -477,8 +477,8 @@ def svc_fit(
      # Augment training set.
     if epochs:
         data_gen = DataGenerator(rotation_range=15.0, zoom_range=0.3, noise_sd=0.2)
-        logger.info('Augmenting dataset.')
-        logger.debug(f'X len: {len(X_train)}, y len: {len(y_train)}')
+        logger.info('Augmenting data set.')
+        logger.info(f'Original data set size: {y_train.shape[0]}')
 
         # Faster to use a list in below ops.
         y_train = y_train.tolist()
@@ -504,6 +504,8 @@ def svc_fit(
 
         # Convert y_train back to np array.
         y_train = np.array(y_train, dtype=np.int8)
+
+        logger.info(f'Augmented data set size: {y_train.shape[0]}')
 
     logger.info('Generating feature vectors from radar projections.')
     X_train = common.process_samples(X_train, proj_mask=proj_mask)

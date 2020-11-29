@@ -475,6 +475,8 @@ if __name__ == '__main__':
     # Desired labels from detection server.
     # These must be all or a subset of the class labels. 
     default_desired_labels = ['person', 'dog', 'cat']
+    # Output captured dataset name.
+    default_dataset = 'datasets/radar_samples.pickle'
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--num_samples', type=int,
@@ -493,6 +495,9 @@ if __name__ == '__main__':
     parser.add_argument('--logging_level', type=str,
         help='logging level, "info" or "debug"',
         default='info')
+    parser.add_argument('--dataset', type=str,
+        help='output captured dataset name',
+        default=os.path.join(common.PRJ_DIR, default_dataset))
     parser.set_defaults(realtime_plot=False)
     parser.set_defaults(save_plot=False)
     args = parser.parse_args()
@@ -557,7 +562,7 @@ if __name__ == '__main__':
     if samples and labels:
         logger.info(f'Captured {len(labels)} new samples with label(s) {set(labels)}.')
         try:
-            with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'rb') as fp:
+            with open(args.dataset, 'rb') as fp:
                 data = pickle.load(fp)
 
             msg = (
@@ -577,7 +582,7 @@ if __name__ == '__main__':
 
         # Write data to disc. 
         logger.debug(f'Data dump:\n{data}')
-        with open(os.path.join(common.PRJ_DIR, common.RADAR_DATA), 'wb') as fp:
+        with open(args.dataset, 'wb') as fp:
             logger.info('Saving data file.')
             pickle.dump(data, fp)
     else:

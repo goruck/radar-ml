@@ -643,7 +643,7 @@ if __name__ == '__main__':
     #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
 
     proj_mask=common.ProjMask(*args.proj_mask)
-    logger.info(f'Projection mask: {args.proj_mask}')
+    logger.info(f'Projection mask: {proj_mask}')
 
     if not args.use_svc:
         logger.info('Using SVM algo: SGDClassifier.')

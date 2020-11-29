@@ -478,7 +478,7 @@ def svc_fit(
     if epochs:
         data_gen = DataGenerator(rotation_range=15.0, zoom_range=0.3, noise_sd=0.2)
         logger.info('Augmenting data set.')
-        logger.info(f'Original data set size: {y_train.shape[0]}')
+        logger.info(f'Original number of training samples: {y_train.shape[0]}')
 
         # Faster to use a list in below ops.
         y_train = y_train.tolist()
@@ -505,7 +505,7 @@ def svc_fit(
         # Convert y_train back to np array.
         y_train = np.array(y_train, dtype=np.int8)
 
-        logger.info(f'Augmented data set size: {y_train.shape[0]}')
+        logger.info(f'Augmented number of training samples: {y_train.shape[0]}')
 
     logger.info('Generating feature vectors from radar projections.')
     X_train = common.process_samples(X_train, proj_mask=proj_mask)

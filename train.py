@@ -33,14 +33,16 @@ class DataGenerator(object):
             noise_sd=None, balance=False):
         """Initialize generator behavior.
 
-        Note:
-            Augmenting data with balance set may not result in perfect balance.
-
         Args:
             rotation_range (float): Range of angles to rotate data [-rotation_range, rotation_range].
             zoom_range (float): Range of scale factors to zoom data [1-zoom_range, 1+zoom_range].
             noise_sd (float): Standard deviation of Gaussian noise added to data.
-            balance: (bool): Balance classes while augmenting data.
+            balance: (bool): Balance classes while augmenting data. This will make all class samples
+                equal to the minority class samples which may lead to large data sets for highly
+                imbalanced classes.
+
+        Note:
+            Augmenting data with balance set may not result in perfect balance.
         """
         self.rotation_range = rotation_range
         self.zoom_range = zoom_range
@@ -407,7 +409,8 @@ def sgd_fit(
         logger.info(f'Running partial fit with augmented data (epochs: {epochs}).')
         y_predicted = clf.predict(X_test)
         logger.debug(f'Un-augmented accuracy: {metrics.accuracy_score(y_test, y_predicted)}.')
-        data_gen = DataGenerator(rotation_range=5.0, zoom_range=0.2, noise_sd=0.1)
+        data_gen = DataGenerator(
+            rotation_range=5.0, zoom_range=0.2, noise_sd=0.1, balance=True)
         for e in range(epochs):
             logger.debug(f'Augment epoch: {e}.')
             batch = 0
@@ -546,9 +549,9 @@ if __name__ == '__main__':
     # Labels to use for training. 
     default_desired_labels = ['person', 'dog', 'cat']
     # Each epoch augments entire data set (zero disables).
-    default_epochs = 2
+    default_epochs = 0
     # Fraction of samples used for model evaluation.
-    default_test_size=0.2
+    default_test_size = 0.2
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', type=int,
@@ -649,6 +652,8 @@ if __name__ == '__main__':
 
     proj_mask=common.ProjMask(*args.proj_mask)
     logger.info(f'Projection mask: {proj_mask}')
+    logger.info(f'Augment epochs: {args.epochs}')
+    logger.info(f'Online learning: {args.online_learn}')
 
     if not args.use_svc:
         logger.info('Using SVM algo: SGDClassifier.')

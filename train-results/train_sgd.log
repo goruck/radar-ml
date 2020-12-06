@@ -1,0 +1,53 @@
+2020-12-05 05:36:41,951 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2020-12-05 05:36:41,987 __main__     INFO     Opening dataset: datasets/radar_samples.pickle
+2020-12-05 05:36:41,997 __main__     INFO     Maybe filtering classes.
+2020-12-05 05:36:41,997 __main__     INFO     Scaling samples.
+2020-12-05 05:36:42,029 __main__     INFO     Encoding labels.
+2020-12-05 05:36:42,030 __main__     INFO     Found 3 classes and 1137 samples:
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 0 "cat" count: 117
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 1 "dog" count: 412
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 2 "person" count: 608
+2020-12-05 05:36:42,030 __main__     INFO     Splitting data set:
+2020-12-05 05:36:42,031 __main__     INFO     ...training samples: 909
+2020-12-05 05:36:42,031 __main__     INFO     ...validation samples: 114
+2020-12-05 05:36:42,031 __main__     INFO     ...test samples: 114
+2020-12-05 05:36:42,031 __main__     INFO     Projection mask: ProjMask(xz=True, yz=True, xy=True)
+2020-12-05 05:36:42,031 __main__     INFO     Augment epochs: 4
+2020-12-05 05:36:42,031 __main__     INFO     Online learning: False
+2020-12-05 05:36:42,031 __main__     INFO     Using SVM algo: SGDClassifier.
+2020-12-05 05:36:42,031 __main__     INFO     Generating feature vectors.
+2020-12-05 05:36:43,405 __main__     INFO     Feature vector length: 10010
+2020-12-05 05:36:43,406 __main__     INFO     Balancing classes.
+2020-12-05 05:36:43,448 __main__     INFO     Running best fit with new data.
+2020-12-05 05:42:19,184 __main__     INFO     
+ Best estimator:
+2020-12-05 05:42:19,184 __main__     INFO     SGDClassifier(alpha=1e-05, loss='log', n_jobs=-1, penalty='elasticnet',
+              random_state=1234, warm_start=True)
+2020-12-05 05:42:19,191 __main__     INFO     
+ Best score for 5-fold search:
+2020-12-05 05:42:19,191 __main__     INFO     0.9710912254536416
+2020-12-05 05:42:19,191 __main__     INFO     
+ Best hyperparameters:
+2020-12-05 05:42:19,192 __main__     INFO     {'alpha': 1e-05, 'average': False, 'l1_ratio': 0.15, 'penalty': 'elasticnet'}
+2020-12-05 05:42:19,192 __main__     INFO     Running partial fit with augmented data (epochs: 4).
+2020-12-05 05:43:22,791 __main__     INFO     Calibrating classifier.
+2020-12-05 05:43:22,811 __main__     INFO     Evaluating final classifier on test set.
+2020-12-05 05:43:22,819 __main__     INFO     Accuracy: 0.8859649122807017
+2020-12-05 05:43:22,826 __main__     INFO     Confusion matrix:
+[[10  3  1]
+ [ 1 41  6]
+ [ 0  2 50]]
+2020-12-05 05:43:23,245 __main__     INFO     Saving confusion matrix plot to: ./train-results/svm_cm.png
+2020-12-05 05:43:23,417 __main__     INFO     Classification report:
+              precision    recall  f1-score   support
+
+         cat       0.91      0.71      0.80        14
+         dog       0.89      0.85      0.87        48
+      person       0.88      0.96      0.92        52
+
+    accuracy                           0.89       114
+   macro avg       0.89      0.84      0.86       114
+weighted avg       0.89      0.89      0.88       114
+
+2020-12-05 05:43:23,418 __main__     INFO     Saving svm model to: ./train-results/svm_radar_classifier.pickle.
+2020-12-05 05:43:23,418 __main__     INFO     Saving label encoder to: ./train-results/radar_labels.pickle.

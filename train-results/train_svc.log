@@ -1,0 +1,52 @@
+2020-12-05 05:56:43,834 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2020-12-05 05:56:43,871 __main__     INFO     Opening dataset: datasets/radar_samples.pickle
+2020-12-05 05:56:43,881 __main__     INFO     Maybe filtering classes.
+2020-12-05 05:56:43,881 __main__     INFO     Scaling samples.
+2020-12-05 05:56:43,913 __main__     INFO     Encoding labels.
+2020-12-05 05:56:43,914 __main__     INFO     Found 3 classes and 1137 samples:
+2020-12-05 05:56:43,914 __main__     INFO     ...class: 0 "cat" count: 117
+2020-12-05 05:56:43,914 __main__     INFO     ...class: 1 "dog" count: 412
+2020-12-05 05:56:43,914 __main__     INFO     ...class: 2 "person" count: 608
+2020-12-05 05:56:43,914 __main__     INFO     Splitting data set:
+2020-12-05 05:56:43,915 __main__     INFO     ...training samples: 909
+2020-12-05 05:56:43,915 __main__     INFO     ...validation samples: 114
+2020-12-05 05:56:43,915 __main__     INFO     ...test samples: 114
+2020-12-05 05:56:43,915 __main__     INFO     Projection mask: ProjMask(xz=True, yz=True, xy=True)
+2020-12-05 05:56:43,915 __main__     INFO     Augment epochs: 0
+2020-12-05 05:56:43,915 __main__     INFO     Online learning: False
+2020-12-05 05:56:43,916 __main__     INFO     Using SVM algo: SVC.
+2020-12-05 05:56:43,916 __main__     INFO     Generating feature vectors from radar projections.
+2020-12-05 05:56:45,137 __main__     INFO     Feature vector length: 10010
+2020-12-05 05:56:45,138 __main__     INFO     Balancing classes.
+2020-12-05 05:56:45,187 __main__     INFO     Finding best classifier.
+2020-12-05 07:14:15,610 __main__     INFO     
+ Best estimator:
+2020-12-05 07:14:15,611 __main__     INFO     SVC(C=10, cache_size=1000, class_weight='balanced', gamma=0.01,
+    probability=True, random_state=1234)
+2020-12-05 07:14:15,613 __main__     INFO     
+ Best score for 5-fold search:
+2020-12-05 07:14:15,613 __main__     INFO     0.9798205771360134
+2020-12-05 07:14:15,613 __main__     INFO     
+ Best hyperparameters:
+2020-12-05 07:14:15,613 __main__     INFO     {'C': 10, 'gamma': 0.01, 'kernel': 'rbf'}
+2020-12-05 07:14:15,926 __main__     INFO     Calibrating classifier.
+2020-12-05 07:14:16,493 __main__     INFO     Evaluating final classifier on test set.
+2020-12-05 07:14:17,053 __main__     INFO     Accuracy: 0.8421052631578947
+2020-12-05 07:14:17,053 __main__     INFO     Confusion matrix:
+[[11  2  1]
+ [ 2 34 12]
+ [ 1  0 51]]
+2020-12-05 07:14:17,350 __main__     INFO     Saving confusion matrix plot to: ./train-results/svm_cm.png
+2020-12-05 07:14:17,514 __main__     INFO     Classification report:
+              precision    recall  f1-score   support
+
+         cat       0.79      0.79      0.79        14
+         dog       0.94      0.71      0.81        48
+      person       0.80      0.98      0.88        52
+
+    accuracy                           0.84       114
+   macro avg       0.84      0.82      0.82       114
+weighted avg       0.86      0.84      0.84       114
+
+2020-12-05 07:14:17,514 __main__     INFO     Saving svm model to: ./train-results/svm_radar_classifier.pickle.
+2020-12-05 07:14:17,576 __main__     INFO     Saving label encoder to: ./train-results/radar_labels.pickle.

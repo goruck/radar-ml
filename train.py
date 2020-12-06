@@ -1,6 +1,11 @@
 """
 Train SVM classifier using SGD or SVC on radar data.
 
+Example usage:
+    $ python3 ./train.py \
+        --datasets datasets/radar_samples_25Nov20.pickle datasets/radar_samples.pickle \
+        --epochs 4
+
 Copyright (c) 2020 Lindo St. Angel
 """
 
@@ -17,7 +22,7 @@ import numpy as np
 from scipy import ndimage
 import matplotlib.pyplot as plt
 from sklearn import (model_selection, metrics, preprocessing, linear_model,
-    svm, utils)
+    svm, utils, calibration)
 
 import common
 
@@ -164,8 +169,10 @@ class DataGenerator(object):
                     # Generate new tuple of zoomed projections.
                     # Use same zoom scale for all projections.
                     if self.zoom_range is not None:
-                        zoom_factor = np.random.uniform(1.0 - self.zoom_range,
-                            1.0 + self.zoom_range)
+                        zoom_factor = np.random.uniform(
+                            1.0 - self.zoom_range,
+                            1.0 + self.zoom_range
+                            )
                         new_t = tuple(clipped_zoom(p, zoom_factor) for p in xb)
                         aug_x.append(new_t)
                         aug_y.append(yb)
@@ -215,7 +222,9 @@ def evaluate_model(model, X_test, y_test, target_names, cm_name):
     logger.info(f'Saving confusion matrix plot to: {cm_name}')
     cm_figure.savefig(cm_name)
     cm_figure.clf()
-    cls_report = metrics.classification_report(y_test, y_pred, target_names=target_names)
+    cls_report = metrics.classification_report(
+        y_test, y_pred, target_names=target_names
+        )
     logger.info(f'Classification report:\n{cls_report}')
 
 def balance_classes(labels, data):
@@ -393,8 +402,10 @@ def sgd_fit(
         # Find best initial classifier.
         logger.info('Running best fit with new data.')
         skf = model_selection.StratifiedKFold(n_splits=folds)
-        clf = find_best_sgd_svm_estimator(X_train, y_train,
-            skf.split(X_train, y_train), RANDOM_SEED)
+        clf = find_best_sgd_svm_estimator(
+            X_train, y_train,
+            skf.split(X_train, y_train), RANDOM_SEED
+            )
     else:
         # Fit existing classifier with new data.
         logger.info('Running partial fit with new data.')
@@ -550,44 +561,69 @@ if __name__ == '__main__':
     default_desired_labels = ['person', 'dog', 'cat']
     # Each epoch augments entire data set (zero disables).
     default_epochs = 0
-    # Fraction of samples used for model evaluation.
-    default_test_size = 0.2
+    # Fraction of data set used for training, validation, testing.
+    # Must sum to 1.0.
+    default_train_val_test_frac = [0.8, 0.1, 0.1]
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', type=int,
+    parser.add_argument(
+        '--epochs', type=int,
         help='number of augementation epochs',
-        default=default_epochs)
-    parser.add_argument('--datasets', nargs='+', type=str,
+        default=default_epochs
+        )
+    parser.add_argument(
+        '--datasets', nargs='+', type=str,
         help='paths to training datasets',
-        default=default_datasets)
-    parser.add_argument('--desired_labels', nargs='+', type=str,
+        default=default_datasets
+        )
+    parser.add_argument(
+        '--desired_labels', nargs='+', type=str,
         help='labels to use for training',
-        default=default_desired_labels)
-    parser.add_argument('--proj_mask', nargs='+', type=bool,
+        default=default_desired_labels
+        )
+    parser.add_argument(
+        '--proj_mask', nargs='+', type=bool,
         help='projection mask (xy, xz, yz)',
-        default=default_proj_mask)
-    parser.add_argument('--svm_cm', type=str,
+        default=default_proj_mask
+        )
+    parser.add_argument(
+        '--svm_cm', type=str,
         help='path of output svm confusion matrix',
-        default=os.path.join(common.PRJ_DIR, default_svm_cm))
-    parser.add_argument('--svm_model', type=str,
+        default=os.path.join(common.PRJ_DIR, default_svm_cm)
+        )
+    parser.add_argument(
+        '--svm_model', type=str,
         help='path of output svm model name',
-        default=os.path.join(common.PRJ_DIR, default_svm_model))
-    parser.add_argument('--label_encoder', type=str,
+        default=os.path.join(common.PRJ_DIR, default_svm_model)
+        )
+    parser.add_argument(
+        '--label_encoder', type=str,
         help='path of output label encoder',
-        default=os.path.join(common.PRJ_DIR, default_label_encoder))
-    parser.add_argument('--logging_level', type=str,
+        default=os.path.join(common.PRJ_DIR, default_label_encoder)
+        )
+    parser.add_argument(
+        '--logging_level', type=str,
         help='logging level, "info" or "debug"',
-        default='info')
-    parser.add_argument('--online_learn', action='store_true',
-        help='use dataset(s) for online learning (ignored if --use_svc')
-    parser.add_argument('--use_svc', action='store_true',
-        help='use svm.SVC instead of linear_model.SGDClassifier')
-    parser.add_argument('--test_size', type=float,
-        help='fraction of samples used for model evaluation',
-        default=default_test_size)
-    parser.add_argument('--log_file', type=str,
+        default='info'
+        )
+    parser.add_argument(
+        '--online_learn', action='store_true',
+        help='use dataset(s) for online learning (ignored if --use_svc'
+        )
+    parser.add_argument(
+        '--use_svc', action='store_true',
+        help='use svm.SVC instead of linear_model.SGDClassifier'
+        )
+    parser.add_argument(
+        '--train_val_test_frac', nargs='+', type=float,
+        help='train, val, test fraction of data set. must sum to 1.0',
+        default=default_train_val_test_frac
+        )
+    parser.add_argument(
+        '--log_file', type=str,
         help='path of output svm model name',
-        default=os.path.join(common.PRJ_DIR, default_log_file))
+        default=os.path.join(common.PRJ_DIR, default_log_file)
+        )
     parser.set_defaults(online_learn=False)
     parser.set_defaults(use_svc=False)
     args = parser.parse_args()
@@ -642,13 +678,20 @@ if __name__ == '__main__':
     for i, c in enumerate(class_names):
         logger.info(f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
 
-    # Split data and labels up into train and test sets.
-    logger.info(f'Splitting data into train and test sets (test size={args.test_size}).')
-    X_train, X_test, y_train, y_test = model_selection.train_test_split(
-        samples, encoded_labels, test_size=args.test_size,
-        random_state=RANDOM_SEED, shuffle=True
-        )
-    #print(f'X_train: {X_train} X_test: {X_test} y_train: {y_train} y_test: {y_test}')
+    # Split data and labels up into train, validation and test sets.
+    logger.info(f'Splitting data set:')
+    train_frac, val_frac, test_frac = args.train_val_test_frac
+    X_train, X_val_test, y_train, y_val_test = model_selection.train_test_split(
+            samples, encoded_labels, test_size=val_frac + test_frac,
+            random_state=RANDOM_SEED, shuffle=True
+            )
+    val_split = int(len(X_val_test) * val_frac / (val_frac + test_frac))
+    X_val, y_val = X_val_test[:val_split], y_val_test[:val_split]
+    test_split = len(X_val_test) - len(X_val)
+    X_test, y_test = X_val_test[test_split:], y_val_test[test_split:]
+    logger.info(f'...training samples: {len(X_train)}')
+    logger.info(f'...validation samples: {len(X_val)}')
+    logger.info(f'...test samples: {len(X_test)}')
 
     proj_mask=common.ProjMask(*args.proj_mask)
     logger.info(f'Projection mask: {proj_mask}')
@@ -673,14 +716,20 @@ if __name__ == '__main__':
             epochs=args.epochs
             )
 
-    logger.info('Evaluating final classifier on test set.')
-    # Compute X_test feature vectors.
+    # Generate feature vectors.
+    X_val_fv = common.process_samples(X_val, proj_mask=proj_mask)
     X_test_fv = common.process_samples(X_test, proj_mask=proj_mask)
-    evaluate_model(clf, X_test_fv, y_test, class_names, args.svm_cm)
+
+    logger.info('Calibrating classifier.')
+    cal_clf = calibration.CalibratedClassifierCV(base_estimator=clf, cv='prefit')
+    cal_clf.fit(X_val_fv, y_val)
+
+    logger.info('Evaluating final classifier on test set.')
+    evaluate_model(cal_clf, X_test_fv, y_test, class_names, args.svm_cm)
 
     logger.info(f'Saving svm model to: {args.svm_model}.')
     with open(args.svm_model, 'wb') as outfile:
-        outfile.write(pickle.dumps(clf))
+        outfile.write(pickle.dumps(cal_clf))
 
     # Do not overwrite label encoder if online learning was performed.
     if not args.online_learn or args.use_svc:

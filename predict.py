@@ -188,15 +188,15 @@ if __name__ == '__main__':
     radar.SetArenaPhi(PHI_MIN, PHI_MAX, PHI_RES)
     radar.SetArenaTheta(THETA_MIN, THETA_MAX, THETA_RES)
     r_min, r_max, _ = radar.GetArenaR()
-    logger.info(f'predict r min: {r_min}, r max: {r_max} (cm)')
+    logger.info(f'Predict r min: {r_min}, r max: {r_max} (cm)')
     phi_min, phi_max, _ = radar.GetArenaPhi()
-    logger.info(f'predict phi min: {phi_min}, phi max: {phi_max} (deg)')
+    logger.info(f'Predict phi min: {phi_min}, phi max: {phi_max} (deg)')
     theta_min, theta_max, _ = radar.GetArenaTheta()
-    logger.info(f'predict theta min: {theta_min}, theta max: {theta_max} (deg)')
+    logger.info(f'Predict theta min: {theta_min}, theta max: {theta_max} (deg)')
 
-    logger.info(f'train r min: {common.R_MIN}, r max: {common.R_MAX} (cm)')
-    logger.info(f'train phi min: {common.PHI_MIN}, phi max: {common.PHI_MAX} (deg)')
-    logger.info(f'train theta min: {common.THETA_MIN}, theta max: {common.THETA_MAX} (deg)')
+    logger.info(f'Train r min: {common.R_MIN}, r max: {common.R_MAX} (cm)')
+    logger.info(f'Train phi min: {common.PHI_MIN}, phi max: {common.PHI_MAX} (deg)')
+    logger.info(f'Train theta min: {common.THETA_MIN}, theta max: {common.THETA_MAX} (deg)')
 
     # Threshold
     radar.SetThreshold(RADAR_THRESHOLD)
@@ -213,15 +213,17 @@ if __name__ == '__main__':
         common.calibrate()
 
     frame_rate = radar.GetAdvancedParameter('FrameRate')
-    logger.info(f'radar frame rate: {frame_rate}')
+    logger.info(f'Radar frame rate: {frame_rate}')
+    logger.info(f'Model: {args.svm_model}')
+    logger.info(f'Label encoder: {args.label_encoder}')
+    logger.info(f'Minimum detection probability: {args.min_proba}')
+    proj_mask=common.ProjMask(*args.proj_mask)
+    logger.info(f'Projection mask: {proj_mask}')
 
     # Load classifier along with the label encoder.
     with open(args.svm_model, 'rb') as fp:
         model = pickle.load(fp)
     with open(args.label_encoder, 'rb') as fp:
         le = pickle.load(fp)
-
-    proj_mask=common.ProjMask(*args.proj_mask)
-    logger.info(f'Projection mask: {proj_mask}')
 
     predict(min_proba=args.min_proba, model=model, le=le, proj_mask=proj_mask)

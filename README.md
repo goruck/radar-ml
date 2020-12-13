@@ -23,7 +23,7 @@ A photo of the hardware created for this project is shown below. The Walabot rad
 
 ![Alt text](./images/training_setup.jpg?raw=true "test setup.")
 
-The TPU runs a real-time object detection server over [grpc](https://grpc.io/) that a client on the Raspberry Pi communicates with. The object detection server code can be found [here](https://github.com/goruck/detection_server). The Raspberry Pi handles the processing required to determine if a detected radar target is the same as an object detected by the TPU to establish ground truth. The Pi and the TPU communicate over a dedicated Ethernet link to minimize latency which is critical to accurately determining if a radar target is the same as a detected object. The Pi also runs predictions on novel radar targets using a trained SVM model and can be used to train the SVM model from radar targets with ground truth.
+The TPU runs a real-time object detection server over [grpc](https://grpc.io/) that a client on the Raspberry Pi communicates with. The object detection server code can be found [here](https://github.com/goruck/detection_server). The Raspberry Pi handles the processing required to determine if a detected radar target is the same as an object detected by the TPU to establish ground truth. The Pi and the TPU communicate over a dedicated Ethernet link to minimize latency which is critical to accurately determining if a radar target is the same as a detected object. The Pi also runs predictions on novel radar targets using a trained model and is used to fit the model from radar target data with ground truth.
 
 
 # Radar and Camera Coordinate Systems
@@ -49,129 +49,71 @@ You can configure [ground_truth_samples.py](./ground_truth_samples.py) to visual
 ![Alt text](./images/realtime_sample_plot.png?raw=true "example visualization.")
 
 # Model Training and Results
-You use the Python module [train.py](./train.py) to train an SVM on the radar samples with ground truth. The samples are scaled to the [-1, 1] range, the classes balanced and then the model is fitted using a stratified 5-Folds cross-validator. The fitted model is evaluated for accuracy, pickled and saved to disk.
+You use the Python module [train.py](./train.py) to train an SVM or Logistic Regression model on the radar samples with ground truth. The samples are scaled to the [0, 1] range, the classes balanced and then the model is fitted using a stratified 5-Folds cross-validator. The fitted model is evaluated for accuracy, pickled and saved to disk.
 
 Three orthogonal views of the radar target's return signal can be obtained. You can think of these as 2-D projections of the 3-D target signal on the radar's X-Y plane, the X-Z plane and the Y-Z plane. Any one of these or any combination of them can be used as an observation. Using all three of them will result in the best accuracy but the dataset (~10k ```float32```'s per sample) and resulting SVM model (~10MB for 1.5k training samples) can be large especially if the radar scan resolution is high. You can think of choosing the optimal combination as a training hyperparameter which is configurable in [train.py](./train.py).
 
 Training results from a run using all projections are shown below.
 
 ```text
-Loading and scaling data.
-Encoding labels.
-class names: ['cat', 'dog', 'person']
-Unbalanced most common: [(2, 617), (1, 246), (0, 4)]
-Unbalanced label shape: (867,)
-Unbalanced data shape: (867, 10010)
-Balanced most common: [(2, 617), (1, 617), (0, 617)]
-Balanced label shape: (1851,)
-Balanced data shape: (1851, 10010)
-
- Finding best svm estimator...
-Fitting 5 folds for each of 42 candidates, totalling 210 fits
-[Parallel(n_jobs=4)]: Using backend LokyBackend with 4 concurrent workers.
-[Parallel(n_jobs=4)]: Done  42 tasks      | elapsed: 12.1min
-[Parallel(n_jobs=4)]: Done 192 tasks      | elapsed: 86.0min
-[Parallel(n_jobs=4)]: Done 210 out of 210 | elapsed: 92.2min finished
-
+2020-12-05 05:36:41,951 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2020-12-05 05:36:41,987 __main__     INFO     Opening dataset: datasets/radar_samples.pickle
+2020-12-05 05:36:41,997 __main__     INFO     Maybe filtering classes.
+2020-12-05 05:36:41,997 __main__     INFO     Scaling samples.
+2020-12-05 05:36:42,029 __main__     INFO     Encoding labels.
+2020-12-05 05:36:42,030 __main__     INFO     Found 3 classes and 1137 samples:
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 0 "cat" count: 117
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 1 "dog" count: 412
+2020-12-05 05:36:42,030 __main__     INFO     ...class: 2 "person" count: 608
+2020-12-05 05:36:42,030 __main__     INFO     Splitting data set:
+2020-12-05 05:36:42,031 __main__     INFO     ...training samples: 909
+2020-12-05 05:36:42,031 __main__     INFO     ...validation samples: 114
+2020-12-05 05:36:42,031 __main__     INFO     ...test samples: 114
+2020-12-05 05:36:42,031 __main__     INFO     Projection mask: ProjMask(xz=True, yz=True, xy=True)
+2020-12-05 05:36:42,031 __main__     INFO     Augment epochs: 4
+2020-12-05 05:36:42,031 __main__     INFO     Online learning: False
+2020-12-05 05:36:42,031 __main__     INFO     Using SVM algo: SGDClassifier.
+2020-12-05 05:36:42,031 __main__     INFO     Generating feature vectors.
+2020-12-05 05:36:43,405 __main__     INFO     Feature vector length: 10010
+2020-12-05 05:36:43,406 __main__     INFO     Balancing classes.
+2020-12-05 05:36:43,448 __main__     INFO     Running best fit with new data.
+2020-12-05 05:42:19,184 __main__     INFO     
  Best estimator:
-SVC(C=100, break_ties=False, cache_size=1000, class_weight='balanced',
-    coef0=0.0, decision_function_shape='ovr', degree=3, gamma=0.001,
-    kernel='rbf', max_iter=-1, probability=True, random_state=1234,
-    shrinking=True, tol=0.001, verbose=False)
-
+2020-12-05 05:42:19,184 __main__     INFO     SGDClassifier(alpha=1e-05, loss='log', n_jobs=-1, penalty='elasticnet',
+              random_state=1234, warm_start=True)
+2020-12-05 05:42:19,191 __main__     INFO     
  Best score for 5-fold search:
-0.9912162162162161
-
+2020-12-05 05:42:19,191 __main__     INFO     0.9710912254536416
+2020-12-05 05:42:19,191 __main__     INFO     
  Best hyperparameters:
-{'C': 100, 'gamma': 0.001, 'kernel': 'rbf'}
-
- Evaluating model.
-
- Confusion matrix:
-[[110   0   0]
- [  0 136   0]
- [  0   2 123]]
-
- Classification matrix:
+2020-12-05 05:42:19,192 __main__     INFO     {'alpha': 1e-05, 'average': False, 'l1_ratio': 0.15, 'penalty': 'elasticnet'}
+2020-12-05 05:42:19,192 __main__     INFO     Running partial fit with augmented data (epochs: 4).
+2020-12-05 05:43:22,791 __main__     INFO     Calibrating classifier.
+2020-12-05 05:43:22,811 __main__     INFO     Evaluating final classifier on test set.
+2020-12-05 05:43:22,819 __main__     INFO     Accuracy: 0.8859649122807017
+2020-12-05 05:43:22,826 __main__     INFO     Confusion matrix:
+[[10  3  1]
+ [ 1 41  6]
+ [ 0  2 50]]
+2020-12-05 05:43:23,245 __main__     INFO     Saving confusion matrix plot to: ./train-results/svm_cm.png
+2020-12-05 05:43:23,417 __main__     INFO     Classification report:
               precision    recall  f1-score   support
 
-         cat       1.00      1.00      1.00       110
-         dog       0.99      1.00      0.99       136
-      person       1.00      0.98      0.99       125
+         cat       0.91      0.71      0.80        14
+         dog       0.89      0.85      0.87        48
+      person       0.88      0.96      0.92        52
 
-    accuracy                           0.99       371
-   macro avg       1.00      0.99      0.99       371
-weighted avg       0.99      0.99      0.99       371
+    accuracy                           0.89       114
+   macro avg       0.89      0.84      0.86       114
+weighted avg       0.89      0.89      0.88       114
 
-
- Saving svm model...
-
- Saving label encoder.
+2020-12-05 05:43:23,418 __main__     INFO     Saving svm model to: ./train-results/svm_radar_classifier.pickle.
+2020-12-05 05:43:23,418 __main__     INFO     Saving label encoder to: ./train-results/radar_labels.pickle.
 ```
 
-![Alt text](./train-results/svm_cm_all.png?raw=true "al projections svm confusion matrix.")
+The training results for using just the X-Y projection are very similar. There is a relatively minor degradation from the all projection case. However, the model training time and model size (about 10MB vs 1.6MB) are far worse. It does not seem to be worth using all views for training, at least for this particular data set.
 
-Training results from a run using only the x-y projections are shown below.
-
-```text
-Loading and scaling data.
-Encoding labels.
-class names: ['cat', 'dog', 'person']
-Unbalanced most common: [(2, 617), (1, 246), (0, 4)]
-Unbalanced label shape: (867,)
-Unbalanced data shape: (867, 682)
-Balanced most common: [(2, 617), (1, 617), (0, 617)]
-Balanced label shape: (1851,)
-Balanced data shape: (1851, 682)
-
- Finding best svm estimator...
-Fitting 5 folds for each of 42 candidates, totalling 210 fits
-[Parallel(n_jobs=4)]: Using backend LokyBackend with 4 concurrent workers.
-[Parallel(n_jobs=4)]: Done  42 tasks      | elapsed:  5.4min
-[Parallel(n_jobs=4)]: Done 192 tasks      | elapsed: 31.0min
-[Parallel(n_jobs=4)]: Done 210 out of 210 | elapsed: 32.9min finished
-
- Best estimator:
-SVC(C=10, break_ties=False, cache_size=1000, class_weight='balanced', coef0=0.0,
-    decision_function_shape='ovr', degree=3, gamma=0.1, kernel='rbf',
-    max_iter=-1, probability=True, random_state=1234, shrinking=True, tol=0.001,
-    verbose=False)
-
- Best score for 5-fold search:
-0.977027027027027
-
- Best hyperparameters:
-{'C': 10, 'gamma': 0.1, 'kernel': 'rbf'}
-
- Evaluating model.
-
- Confusion matrix:
-[[110   0   0]
- [  0 136   0]
- [  0   3 122]]
-
- Classification matrix:
-              precision    recall  f1-score   support
-
-         cat       1.00      1.00      1.00       110
-         dog       0.98      1.00      0.99       136
-      person       1.00      0.98      0.99       125
-
-    accuracy                           0.99       371
-   macro avg       0.99      0.99      0.99       371
-weighted avg       0.99      0.99      0.99       371
-
-
- Saving svm model...
-
- Saving label encoder.
-```
-
-![Alt text](./train-results/svm_cm_xy.png?raw=true "al projections svm confusion matrix.")
-
-You can see that there is only a slight improvement for using all projections over just the x-y plane but the model training time and model size (10MB vs 1.6MB) are far worse. It does not seem to be worth using all views, at least for this particular dataset.
-
-The most recently trained model (which uses all projections) and data set can be found [here](https://drive.google.com/drive/folders/1y8twF6puPXvedXhsFhff45HlMawgHzcS). This model has the labels ‘person’, ‘polly’ and ‘rebel’, the latter two being the names of my dog and cat respectively. You can easily map these names to suit your own household. The model has an input vector of 10,011 features made up of 5,457 features from the Y-Z projection plane, 3,872 features from the X-Z plane and 682 features from the X-Y plane. The number of features in each plane are a function of the radar Arena size and resolution with the default training Arena yielding these numbers.
+he most recently trained model (which uses all projections) and data set can be found [here](https://drive.google.com/drive/folders/1y8twF6puPXvedXhsFhff45HlMawgHzcS?usp=sharing). This model has the labels ‘person’, ‘dog’ and ‘cat’. You can easily map these names to suit your own household. The model has an input vector of 10,011 features made up of 5,457 features from the Y-Z projection plane, 3,872 features from the X-Z plane and 682 features from the X-Y plane. The number of features in each plane are a function of the radar Arena size and resolution with the default training Arena yielding these numbers.
 
 # Making Predictions
 The Python module [predict.py](./predict.py) is used to illustrate how predictions are made on novel radar samples using the trained SVM model. You can use a radar prediction Arena different from what was used for training as the predict module will automatically scale the observations as required. However, you should make sure the radar Threshold, Filter Type and Profile are similar to what was used for training. Additionally, the observations need to be constructed from the same orthogonal planes as was used during training.

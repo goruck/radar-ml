@@ -77,8 +77,8 @@ def make_generator_model():
 generator = make_generator_model()
 generator.summary()
 
-#noise = tf.random.normal([1, 100])
-#generated_image = generator(noise, training=False)
+noise = tf.random.normal([1, 100])
+generated_image = generator(noise, training=False)
 
 #plt.imshow(generated_image[0, :, :, 0], cmap='gray')
 
@@ -123,8 +123,8 @@ def make_discriminator_model():
 
 discriminator = make_discriminator_model()
 discriminator.summary()
-#decision = discriminator(generated_image)
-#print (decision)
+decision = discriminator(generated_image)
+print(decision)
 
 # Define the loss and optimizers.
 # This method returns a helper function to compute cross entropy loss
@@ -140,8 +140,8 @@ def discriminator_loss(real_output, fake_output):
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
-generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0004)
-discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0003)
+generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00004)
+discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00003)
 
 # Save checkpoints.
 checkpoint_dir = './training_checkpoints'
@@ -163,7 +163,8 @@ seed = tf.random.normal([num_examples_to_generate, noise_dim])
 # Select metrics to measure the loss and the accuracy of the model.
 gen_loss_metric = tf.keras.metrics.Mean(name='gen_loss')
 disc_loss_metric = tf.keras.metrics.Mean(name='disc_loss')
-#train_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_accuracy')
+disc_accy_metric = tf.keras.metrics.BinaryCrossentropy(name='disc_accy')
+val_accuracy = tf.keras.metrics.BinaryCrossentropy(name='val_accuracy')
 
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 gen_log_dir = 'logs/' + current_time + '/gen'
@@ -185,9 +186,9 @@ def train_step(real_images):
     # Combine them with real images.
     combined_images = tf.concat([generated_images, real_images], axis=0)
 
-    # Assemble labels discriminating real from fake images.
+    # Assemble labels discriminating real (label=1) from fake (label=0) images.
     labels = tf.concat(
-        [tf.ones((BATCH_SIZE, 1)), tf.zeros((real_images.shape[0], 1))], axis=0
+        [tf.zeros((BATCH_SIZE, 1)), tf.ones((real_images.shape[0], 1))], axis=0
     )
     # Add random noise to the labels - important trick!
     #labels += 0.05 * tf.random.uniform(labels.shape)
@@ -196,7 +197,7 @@ def train_step(real_images):
     # Open a GradientTape to record the operations run
     # during the forward pass, which enables auto-differentiation.
     with tf.GradientTape() as tape:
-        predictions = discriminator(combined_images)
+        predictions = discriminator(combined_images, training=True)
         discriminator_loss = loss_fn(labels, predictions)
     # Use the gradient tape to automatically retrieve
     # the gradients of the trainable variables with respect to the loss.
@@ -206,30 +207,33 @@ def train_step(real_images):
     discriminator_optimizer.apply_gradients(zip(gradients, discriminator.trainable_weights))
 
     disc_loss_metric.update_state(discriminator_loss)
+    disc_accy_metric.update_state(labels, predictions)
 
     # Sample random points in the latent space.
     random_latent_vectors = tf.random.normal(shape=[BATCH_SIZE, noise_dim])
     # Assemble labels that say "all real images".
-    misleading_labels = tf.zeros((BATCH_SIZE, 1))
+    misleading_labels = tf.ones((BATCH_SIZE, 1))
 
     # Train the generator (note that we should *not* update the weights
     # of the discriminator)!
     with tf.GradientTape() as tape:
-        predictions = discriminator(generator(random_latent_vectors))
+        predictions = discriminator(generator(random_latent_vectors, training=True), training=True)
         generator_loss = loss_fn(misleading_labels, predictions)
     gradients = tape.gradient(generator_loss, generator.trainable_weights)
     generator_optimizer.apply_gradients(zip(gradients, generator.trainable_weights))
 
     gen_loss_metric.update_state(generator_loss)
 
-def train(dataset, epochs):
+    return discriminator_loss, generator_loss
+
+def train(train_dataset, val_dataset, epochs):
   for epoch in range(epochs):
     start = time.time()
 
-    #tf.summary.trace_on(graph=True, profiler=True)
-    for image_batch in dataset:
-        train_step(image_batch)
-    #tf.summary.trace_export(name="my_func_trace", step=0, profiler_outdir=graph_log_dir)
+    for step, image_batch in enumerate(train_dataset):
+        d_loss, g_loss = train_step(image_batch)
+        #print("discriminator loss at step %d: %.2f" % (step, d_loss))
+        #print("adversarial loss at step %d: %.2f" % (step, g_loss))
 
     with gen_summary_writer.as_default():
         tf.summary.scalar('gen_loss', gen_loss_metric.result(), step=epoch)
@@ -250,11 +254,13 @@ def train(dataset, epochs):
         f'Time: {time.time()- start}, '
         f'Generator Loss: {gen_loss_metric.result()}, '
         f'Discriminator Loss: {disc_loss_metric.result()}, '
+        f'Discriminator Accy: {disc_accy_metric.result()}, '
     )
 
     # Reset metrics.
     gen_loss_metric.reset_states()
     disc_loss_metric.reset_states()
+    disc_accy_metric.reset_states()
 
   # Generate after the final epoch
   #display.clear_output(wait=True)
@@ -294,7 +300,7 @@ if __name__ == '__main__':
     default_epochs = 0
     # Fraction of data set used for training, validation, testing.
     # Must sum to 1.0.
-    default_train_val_test_frac = [0.8, 0.1, 0.1]
+    default_train_val_test_frac = [0.9, 0.1, 0.0]
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -419,8 +425,7 @@ if __name__ == '__main__':
             )
     val_split = int(len(X_val_test) * val_frac / (val_frac + test_frac))
     X_val, y_val = X_val_test[:val_split], y_val_test[:val_split]
-    test_split = len(X_val_test) - len(X_val)
-    X_test, y_test = X_val_test[test_split:], y_val_test[test_split:]
+    X_test, y_test = X_val_test[val_split:], y_val_test[val_split:]
     logger.info(f'...training samples: {len(X_train)}')
     logger.info(f'...validation samples: {len(X_val)}')
     logger.info(f'...test samples: {len(X_test)}')
@@ -438,21 +443,26 @@ if __name__ == '__main__':
     #for fv in X_train_fv:
         #print(f'min: {min(fv)} max: {max(fv)}, \nfv: {fv}')
 
+    X_val_fv = common.process_samples(X_val, proj_mask=proj_mask)
+
     # Batch size.
     BATCH_SIZE = 64
 
     # Create dataset.
     train_dataset = tf.data.Dataset.from_tensor_slices(X_train_fv)
+    val_dataset = tf.data.Dataset.from_tensor_slices(X_val_fv)
 
     # Reshape and resize.
     train_dataset = train_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
+    val_dataset = val_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
 
     # Batch.
     train_dataset = train_dataset.batch(BATCH_SIZE)
+    val_dataset = val_dataset.batch(BATCH_SIZE)
 
     #for element in train_dataset:
         #print(element)
 
     #exit()
 
-    train(train_dataset, EPOCHS)
+    train(train_dataset, val_dataset, EPOCHS)

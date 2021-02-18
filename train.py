@@ -687,8 +687,7 @@ if __name__ == '__main__':
             )
     val_split = int(len(X_val_test) * val_frac / (val_frac + test_frac))
     X_val, y_val = X_val_test[:val_split], y_val_test[:val_split]
-    test_split = len(X_val_test) - len(X_val)
-    X_test, y_test = X_val_test[test_split:], y_val_test[test_split:]
+    X_test, y_test = X_val_test[val_split:], y_val_test[val_split:]
     logger.info(f'...training samples: {len(X_train)}')
     logger.info(f'...validation samples: {len(X_val)}')
     logger.info(f'...test samples: {len(X_test)}')

@@ -87,32 +87,32 @@ def make_discriminator_model():
 
     model.add(layers.Conv2D(64, (5, 5), strides=(1, 4), padding='same', input_shape=[1, 8192, 1]))
     #model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU(alpha=0.2))
-    model.add(layers.Dropout(0.3))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.5))
     assert model.output_shape == (None, 1, 2048, 64)
 
     model.add(layers.Conv2D(128, (5, 5), strides=(1, 4), padding='same'))
     #model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU(alpha=0.2))
-    model.add(layers.Dropout(0.3))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.5))
     assert model.output_shape == (None, 1, 512, 128)
 
     model.add(layers.Conv2D(256, (5, 5), strides=(1, 4), padding='same'))
     #model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU(alpha=0.2))
-    model.add(layers.Dropout(0.3))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.5))
     assert model.output_shape == (None, 1, 128, 256)
 
     model.add(layers.Conv2D(512, (5, 5), strides=(1, 4), padding='same'))
     #model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU(alpha=0.2))
-    model.add(layers.Dropout(0.3))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.5))
     assert model.output_shape == (None, 1, 32, 512)
 
     model.add(layers.Conv2D(1024, (5, 5), strides=(1, 2), padding='same'))
     #model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU(alpha=0.2))
-    model.add(layers.Dropout(0.3))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.5))
     assert model.output_shape == (None, 1, 16, 1024)
 
     model.add(layers.Flatten())
@@ -140,8 +140,8 @@ def discriminator_loss(real_output, fake_output):
 def generator_loss(fake_output):
     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
-generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00004)
-discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00003)
+generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001)
+discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.00001)
 
 # Save checkpoints.
 checkpoint_dir = './training_checkpoints'
@@ -152,7 +152,7 @@ checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
                                  discriminator=discriminator)
 
 # Define the training loop.
-EPOCHS = 100
+EPOCHS = 25
 noise_dim = 100
 num_examples_to_generate = 16
 
@@ -163,8 +163,9 @@ seed = tf.random.normal([num_examples_to_generate, noise_dim])
 # Select metrics to measure the loss and the accuracy of the model.
 gen_loss_metric = tf.keras.metrics.Mean(name='gen_loss')
 disc_loss_metric = tf.keras.metrics.Mean(name='disc_loss')
-disc_accy_metric = tf.keras.metrics.BinaryCrossentropy(name='disc_accy')
-val_accuracy = tf.keras.metrics.BinaryCrossentropy(name='val_accuracy')
+test_loss_metric = tf.keras.metrics.Mean(name='test_loss')
+disc_accy_metric = tf.keras.metrics.BinaryAccuracy(name='disc_accy')
+test_accy_metric = tf.keras.metrics.BinaryAccuracy(name='test_accy')
 
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 gen_log_dir = 'logs/' + current_time + '/gen'
@@ -226,6 +227,14 @@ def train_step(real_images):
 
     return discriminator_loss, generator_loss
 
+@tf.function
+def test_step(real_images):
+    labels = tf.ones((real_images.shape[0], 1))
+    predictions = discriminator(real_images, training=False)
+    loss = loss_fn(labels, predictions)
+    test_loss_metric.update_state(loss)
+    test_accy_metric.update_state(labels, predictions)
+
 def train(train_dataset, val_dataset, epochs):
   for epoch in range(epochs):
     start = time.time()
@@ -249,18 +258,26 @@ def train(train_dataset, val_dataset, epochs):
     if (epoch + 1) % 15 == 0:
         checkpoint.save(file_prefix = checkpoint_prefix)
 
+    # Run a validation loop at the end of each epoch.
+    for image_batch in val_dataset:
+        test_step(image_batch)
+
     print(
         f'Epoch: {epoch + 1}, '
         f'Time: {time.time()- start}, '
         f'Generator Loss: {gen_loss_metric.result()}, '
-        f'Discriminator Loss: {disc_loss_metric.result()}, '
-        f'Discriminator Accy: {disc_accy_metric.result()}, '
+        f'Discriminator Test Loss: {disc_loss_metric.result()}, '
+        f'Discriminator Test Accy: {disc_accy_metric.result()}, '
+        f'Discriminator Val Loss: {test_loss_metric.result()}, '
+        f'Discriminator Val Accy: {test_accy_metric.result()}, '
     )
 
     # Reset metrics.
     gen_loss_metric.reset_states()
     disc_loss_metric.reset_states()
     disc_accy_metric.reset_states()
+    test_accy_metric.reset_states()
+    test_loss_metric.reset_states()
 
   # Generate after the final epoch
   #display.clear_output(wait=True)
@@ -281,6 +298,118 @@ def generate_and_save_images(model, epoch, test_input):
   plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
   #plt.show()
 
+def augment_data(x, rotation_range=10.0, zoom_range=0.5, noise_sd=1.0):
+    rg = np.random.Generator(np.random.PCG64())
+
+    def clamp(p):
+        p[p>1.0] = 1.0
+        p[p<-1.0] = -1.0
+        return p
+
+    def rotate(p):
+        """Rotate projection."""
+        angle = np.random.uniform(-1*rotation_range, rotation_range)
+        p = ndimage.rotate(p, angle, reshape=False)
+        return clamp(p)
+
+    def clipped_zoom(img, zoom_factor, **kwargs):
+        """Generate zoomed versions of radar scans keeping array size constant.
+
+        Note:
+        https://stackoverflow.com/questions/37119071/
+        """
+        h, w = img.shape[:2]
+
+        # For multichannel images we don't want to apply the zoom factor to the RGB
+        # dimension, so instead we create a tuple of zoom factors, one per array
+        # dimension, with 1's for any trailing dimensions after the width and height.
+        zoom_tuple = (zoom_factor,) * 2 + (1,) * (img.ndim - 2)
+
+        # Zooming out
+        if zoom_factor < 1:
+
+            # Bounding box of the zoomed-out image within the output array
+            zh = int(np.round(h * zoom_factor))
+            zw = int(np.round(w * zoom_factor))
+            top = (h - zh) // 2
+            left = (w - zw) // 2
+
+            # Zero-padding
+            out = np.zeros_like(img)
+            out[top:top+zh, left:left+zw] = ndimage.zoom(img, zoom_tuple, **kwargs)
+
+        # Zooming in
+        elif zoom_factor > 1:
+
+            # Bounding box of the zoomed-in region within the input array
+            zh = int(np.ceil(h / zoom_factor))
+            zw = int(np.ceil(w / zoom_factor))
+            top = (h - zh) // 2
+            left = (w - zw) // 2
+
+            out = ndimage.zoom(img[top:top+zh, left:left+zw], zoom_tuple, **kwargs)
+
+            # `out` might still be slightly larger than `img` due to rounding, so
+            # trim off any extra pixels at the edges
+            trim_top = ((out.shape[0] - h) // 2)
+            trim_left = ((out.shape[1] - w) // 2)
+            out = out[trim_top:trim_top+h, trim_left:trim_left+w]
+
+        # If zoom_factor == 1, just return the input array
+        else:
+            out = img
+
+        return clamp(out)
+
+    def add_noise(p, sd):
+        """Add Gaussian noise."""
+        p += rg.normal(scale=sd)
+        return clamp(p)
+
+    # Generate new tuple of rotated projections.
+    # Rotates each projection independently.
+    if rotation_range is not None:
+        x = tuple(rotate(p) for p in x)
+
+    # Generate new tuple of zoomed projections.
+    # Use same zoom scale for all projections.
+    if zoom_range is not None:
+        zoom_factor = np.random.uniform(
+            1.0 - zoom_range,
+            1.0 + zoom_range
+        )
+        x = tuple(clipped_zoom(p, zoom_factor) for p in x)
+
+    # Generate new tuple of projections with Gaussian noise.
+    # Adds noise to each projection independently.
+    if noise_sd is not None:
+        x = tuple(add_noise(p, noise_sd) for p in x)
+
+    return x
+
+def prepare(data, shuffle=False, augment=False,
+    proj_mask = [True, True, True], batch_size=32):
+    """
+    Prepare radar data for training and validation.
+    """
+    if augment:
+        data = [augment_data(x) for x in data]
+
+    fv = common.process_samples(data, proj_mask=proj_mask)
+
+    dataset = tf.data.Dataset.from_tensor_slices(fv)
+
+    if shuffle:
+        dataset = dataset.shuffle(1000)
+
+    dataset = dataset.map(lambda x: tf.image.resize(
+        x[tf.newaxis, ..., tf.newaxis], [1, 8192])
+    )
+
+    dataset = dataset.batch(batch_size)
+
+    return dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
+
 if __name__ == '__main__':
     # Log file name.
     default_log_file = 'train-results/train.log'
@@ -300,7 +429,7 @@ if __name__ == '__main__':
     default_epochs = 0
     # Fraction of data set used for training, validation, testing.
     # Must sum to 1.0.
-    default_train_val_test_frac = [0.9, 0.1, 0.0]
+    default_train_val_test_frac = [0.8, 0.2, 0.0]
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -401,8 +530,10 @@ if __name__ == '__main__':
 
     # Scale each feature to the [-1, 1] range.
     logger.info('Scaling samples.')
-    samples = [[(p - common.RADAR_MAX / 2) / (common.RADAR_MAX / 2) for p in s] for s in samples]
-    #print(samples)
+    samples = [tuple(
+                (p - common.RADAR_MAX / 2) / (common.RADAR_MAX / 2) for p in s
+        ) for s in samples
+    ]
 
     # Encode the labels.
     logger.info('Encoding labels.')
@@ -420,9 +551,9 @@ if __name__ == '__main__':
     logger.info(f'Splitting data set:')
     train_frac, val_frac, test_frac = args.train_val_test_frac
     X_train, X_val_test, y_train, y_val_test = model_selection.train_test_split(
-            samples, encoded_labels, test_size=val_frac + test_frac,
-            random_state=RANDOM_SEED, shuffle=True
-            )
+        samples, encoded_labels, test_size=val_frac + test_frac,
+        random_state=RANDOM_SEED, shuffle=True
+    )
     val_split = int(len(X_val_test) * val_frac / (val_frac + test_frac))
     X_val, y_val = X_val_test[:val_split], y_val_test[:val_split]
     X_test, y_test = X_val_test[val_split:], y_val_test[val_split:]
@@ -438,27 +569,33 @@ if __name__ == '__main__':
     #zf = 8192 / 10010
     #proj_zoom = common.ProjZoom([zf, zf], [zf, zf], [zf, zf])
 
-    X_train_fv = common.process_samples(X_train, proj_mask=proj_mask)
+    BATCH_SIZE = 64
+
+    # Prepare datasets for training and validation.
+    train_dataset = prepare(X_train, shuffle=True, augment=True, batch_size=BATCH_SIZE)
+    val_dataset = prepare(X_val, shuffle=True, batch_size=BATCH_SIZE)
+
+    #X_train_fv = common.process_samples(X_train, proj_mask=proj_mask)
     #print(X_train_fv)
     #for fv in X_train_fv:
         #print(f'min: {min(fv)} max: {max(fv)}, \nfv: {fv}')
 
-    X_val_fv = common.process_samples(X_val, proj_mask=proj_mask)
+    #X_val_fv = common.process_samples(X_val, proj_mask=proj_mask)
 
     # Batch size.
-    BATCH_SIZE = 64
+    #BATCH_SIZE = 64
 
     # Create dataset.
-    train_dataset = tf.data.Dataset.from_tensor_slices(X_train_fv)
-    val_dataset = tf.data.Dataset.from_tensor_slices(X_val_fv)
+    #train_dataset = tf.data.Dataset.from_tensor_slices(X_train_fv)
+    #val_dataset = tf.data.Dataset.from_tensor_slices(X_val_fv)
 
-    # Reshape and resize.
-    train_dataset = train_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
-    val_dataset = val_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
+    # Reshape and resize to [None, 1, 8192, 1] (add Batch and Channels dimensions).
+    #train_dataset = train_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
+    #val_dataset = val_dataset.map(lambda x: tf.image.resize(x[tf.newaxis, ..., tf.newaxis], [1, 8192]))
 
     # Batch.
-    train_dataset = train_dataset.batch(BATCH_SIZE)
-    val_dataset = val_dataset.batch(BATCH_SIZE)
+    #train_dataset = train_dataset.batch(BATCH_SIZE)
+    #val_dataset = val_dataset.batch(BATCH_SIZE)
 
     #for element in train_dataset:
         #print(element)

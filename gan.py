@@ -22,6 +22,8 @@ from sklearn import (model_selection, metrics, preprocessing, linear_model,
     svm, utils, calibration)
 import tensorflow as tf
 from tensorflow.keras import layers
+from tensorflow.keras import backend
+from tensorflow.keras import Model
 #from IPython import display
 
 import common
@@ -218,7 +220,7 @@ def train_step(real_images):
     # Train the generator (note that we should *not* update the weights
     # of the discriminator)!
     with tf.GradientTape() as tape:
-        predictions = discriminator(generator(random_latent_vectors, training=True), training=True)
+        predictions = discriminator(generator(random_latent_vectors, training=True), training=False)
         generator_loss = loss_fn(misleading_labels, predictions)
     gradients = tape.gradient(generator_loss, generator.trainable_weights)
     generator_optimizer.apply_gradients(zip(gradients, generator.trainable_weights))

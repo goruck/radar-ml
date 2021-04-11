@@ -16,15 +16,17 @@ import time
 import datetime
 
 import numpy as np
-from numpy.core.fromnumeric import size
+from numpy.core.fromnumeric import nonzero, size
 from scipy import ndimage
 import matplotlib.pyplot as plt
 from sklearn import (model_selection, metrics, preprocessing, linear_model,
                      svm, utils, calibration)
 import tensorflow as tf
+from tensorflow.core.framework.types_pb2 import _DATATYPE
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import Model
+from tensorflow.keras import initializers
 #from IPython import display
 
 import common
@@ -134,49 +136,59 @@ def define_generator(latent_dim=100):
     return model
 
 
-def create_gen_conv_layers(input_scan):
-    # foundation for a 10 x 10 x 128 scan
-    n_nodes = 10 * 10 * 128
+def create_gen_conv_layers(input, init):
+    n_nodes = 5 * 5 * 128
 
-    conv = layers.Dense(n_nodes)(input_scan)
+    conv = layers.Dense(n_nodes, kernel_initializer=init)(input)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    conv = layers.Reshape((10, 10, 128))(conv)
+    conv = layers.Reshape((5, 5, 128))(conv)
+
+    # upsample to 10 x 10
+    conv = layers.Conv2DTranspose(
+        128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
+    conv = layers.BatchNormalization()(conv)
+    conv = layers.LeakyReLU(alpha=0.2)(conv)
 
     # upsample to 20 x 20
     conv = layers.Conv2DTranspose(
-        128, (4, 4), strides=(2, 2), padding='same', use_bias=False)(conv)
+        128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
     # upsample to 40 x 40
     conv = layers.Conv2DTranspose(
-        128, (4, 4), strides=(2, 2), padding='same', use_bias=False)(conv)
+        128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
     # upsample to 80 x 80
     conv = layers.Conv2DTranspose(
-        128, (4, 4), strides=(2, 2), padding='same', use_bias=False)(conv)
+        128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    return layers.Conv2D(
-        1, (7, 7), activation='tanh', padding='same', use_bias=False)(conv)
+    return layers.Conv2D(1, (7, 7), activation='tanh', padding='same', kernel_initializer=init)(conv)
+
 
 def define_generator_m(latent_dim=100):
-    xz_inp = layers.Input(shape=(latent_dim,))
-    xz_model = create_gen_conv_layers(xz_inp)
+    init = initializers.RandomNormal(mean=0.0, stddev=0.02)
+    #init= initializers.GlorotUniform()
 
-    yz_inp = layers.Input(shape=(latent_dim,))
-    yz_model = create_gen_conv_layers(yz_inp)
+    input = layers.Input(shape=(latent_dim,))
 
-    xy_inp = layers.Input(shape=(latent_dim,))
-    xy_model = create_gen_conv_layers(xy_inp)
+    #xz_inp = layers.Input(shape=(latent_dim,))
+    xz_model = create_gen_conv_layers(input, init)
+
+    #yz_inp = layers.Input(shape=(latent_dim,))
+    yz_model = create_gen_conv_layers(input, init)
+
+    #xy_inp = layers.Input(shape=(latent_dim,))
+    xy_model = create_gen_conv_layers(input, init)
 
     # define model
-    return Model(inputs=[xz_inp, yz_inp, xy_inp],
-                 outputs=[xz_model, yz_model, xy_model])
+    return Model(inputs=input, outputs=[xz_model, yz_model, xy_model], name='generator')
+
 
 def make_discriminator_model():
     model = tf.keras.Sequential()
@@ -229,25 +241,28 @@ def make_discriminator_model():
 
 def custom_activation(output):
     logexpsum = backend.sum(backend.exp(output), axis=-1, keepdims=True)
-    result = logexpsum / (logexpsum + 1.0)
-    return result
+    return logexpsum / (logexpsum + 1.0)
 
 
-def create_conv_layers(input_scan):
+def create_conv_layers(input_scan, init):
     input_shape = input_scan.shape[1:]
 
-    conv = layers.Conv2D(32, (4, 4), strides=(
-        2, 2), padding='same', input_shape=input_shape)(input_scan)
+    conv = layers.Conv2D(128, (4, 4), strides=(
+        2, 2), padding='same', input_shape=input_shape, kernel_initializer=init)(input_scan)
+    conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.2)(conv)
 
-    conv = layers.Conv2D(64, (4, 4), strides=(2, 2), padding='same')(conv)
+    conv = layers.Conv2D(128, (4, 4), strides=(
+        2, 2), padding='same', kernel_initializer=init)(conv)
+    conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.2)(conv)
 
-    conv = layers.Conv2D(128, (4, 4), strides=(2, 2), padding='same')(conv)
+    conv = layers.Conv2D(128, (4, 4), strides=(
+        2, 2), padding='same', kernel_initializer=init)(conv)
+    conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.2)(conv)
+
+    conv = layers.GlobalMaxPooling2D()(conv)
 
     return conv
 
@@ -256,39 +271,44 @@ def create_conv_layers(input_scan):
 
 
 def define_discriminator_m(xz_shape=(80, 80, 1), yz_shape=(80, 80, 1), xy_shape=(80, 80, 1), n_classes=3):
+    init = initializers.RandomNormal(mean=0.0, stddev=0.02)
+    #init = initializers.GlorotUniform()
 
     xz_input = layers.Input(shape=xz_shape)
-    xz_model = create_conv_layers(xz_input)
-
+    xz_model = create_conv_layers(xz_input, init)
     yz_input = layers.Input(shape=yz_shape)
-    yz_model = create_conv_layers(yz_input)
-
+    yz_model = create_conv_layers(yz_input, init)
     xy_input = layers.Input(shape=xy_shape)
-    xy_model = create_conv_layers(xy_input)
+    xy_model = create_conv_layers(xy_input, init)
 
     conv = layers.concatenate([xz_model, yz_model, xy_model])
 
-    conv = layers.Flatten()(conv)
+    conv = layers.Dense(128, kernel_initializer=init)(conv)
+    conv = layers.BatchNormalization()(conv)
+    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.Dropout(0.5)(conv)
 
-    #conv = layers.Dense(512)(conv)
-    #conv = layers.LeakyReLU(alpha=0.1)(conv)
-    #conv = layers.Dropout(0.5)(conv)
+    conv = layers.Dense(128, kernel_initializer=init)(conv)
+    conv = layers.BatchNormalization()(conv)
+    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.Dropout(0.5)(conv)
 
-    conv = layers.Dense(n_classes)(conv)
+    conv = layers.Dense(n_classes, kernel_initializer=init)(conv)
+
     c_out_layer = layers.Activation('softmax')(conv)
 
-    c_model = Model(inputs=[xz_input, yz_input,
-                    xy_input], outputs=[c_out_layer])
+    c_model = Model(inputs=[xz_input, yz_input, xy_input],
+                    outputs=[c_out_layer], name='classifier')
     c_model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
         lr=0.0002, beta_1=0.5), metrics=['accuracy'])
 
     # unsupervised output
     d_out_layer = layers.Lambda(custom_activation)(conv)
     # define and compile unsupervised discriminator model
-    d_model = Model(inputs=[xz_input, yz_input,
-                    xy_input], outputs=[d_out_layer])
+    d_model = Model(inputs=[xz_input, yz_input, xy_input], outputs=[
+                    d_out_layer], name='discriminator')
     d_model.compile(loss='binary_crossentropy',
-                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5))
+                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5), metrics=['accuracy'])
 
     return d_model, c_model
 
@@ -721,7 +741,7 @@ def prepare(data, labels, shuffle=False, augment=False, balance=False,
     return dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
 
 
-def balance_classes(data, labels):
+def balance_classes(data, labels, samples_sup):
     """Balance classess."""
     # Most common classes and their counts from the most common to the least.
     c = collections.Counter(labels)
@@ -729,11 +749,12 @@ def balance_classes(data, labels):
 
     # Return if already balanced.
     if len(set([c for _, c in mc])) == 1:
-        return labels, data
+        return data, labels, samples_sup
 
     print(f'Unbalanced most common: {mc}')
     print(f'Unbalanced label len: {len(labels)}')
     print(f'Unbalanced data len: {len(data)}')
+    print(f'Unbalanced samples_sup len: {len(samples_sup)}')
 
     # Build a list of class indices from most common rankings.
     indices = [np.nonzero(labels == i)[0] for (i, _) in mc]
@@ -741,6 +762,8 @@ def balance_classes(data, labels):
     labels_list = [labels[i] for i in indices]
     # Use that list again to build a list of data sets corresponding to each class.
     data_list = [data[i] for i in indices]
+    # Use that list again to build a list of samples_sup sets corresponding to each class.
+    samples_sup_list = [samples_sup[i] for i in indices]
 
     # Upsample data and label sets.
     _, majority_size = mc[0]
@@ -754,6 +777,7 @@ def balance_classes(data, labels):
         )
     data_upsampled = [upsample(data) for data in data_list]
     labels_upsampled = [upsample(label) for label in labels_list]
+    samples_sup_upsampled = [upsample(samples_sup) for samples_sup in samples_sup_list]
 
     # Recombine the separate, and now upsampled, label and data sets.
     data_balanced = functools.reduce(
@@ -762,6 +786,9 @@ def balance_classes(data, labels):
     labels_balanced = functools.reduce(
         lambda a, b: np.concatenate((a, b)), labels_upsampled
     )
+    samples_sup_balanced = functools.reduce(
+        lambda a, b: np.concatenate((a, b)), samples_sup_upsampled
+    )
 
     c = collections.Counter(labels_balanced)
     mc = c.most_common()
@@ -769,51 +796,63 @@ def balance_classes(data, labels):
     print(f'Balanced most common: {mc}')
     print(f'Balanced label len: {len(labels_balanced)}')
     print(f'Balanced data len: {len(data_balanced)}')
+    print(f'Balanced smaples_sup len: {len(samples_sup_balanced)}')
 
-    return data_balanced, labels_balanced
+    return data_balanced, labels_balanced, samples_sup_balanced
 
 # select a supervised subset of the dataset, ensures classes are balanced
-
-
 def select_supervised_samples(dataset, n_samples=150, n_classes=3):
-    #X, y = dataset
-    xz, yz, xy, y = dataset
-    #X_list, y_list = list(), list()
-    xz_list, yz_list, xy_list, y_list = [], [], [], []
+    X, y, sup = dataset
+    #xz, yz, xy, y = dataset
+    X_list, y_list = list(), list()
+    #xz_list, yz_list, xy_list, y_list = [], [], [], []
     n_per_class = int(n_samples / n_classes)
+
+    # Ensure enough sup samples in each class.
+    #for i in range(n_classes):
+        #assert np.count_nonzero(
+            #sup[y == i] == True) >= n_per_class, f'Not enough class {i} sup samples'
+
     for i in range(n_classes):
-        # get all images for this class
-        #X_with_class = X[y == i]
-        xz_with_class = xz[y == i]
-        yz_with_class = yz[y == i]
-        xy_with_class = xy[y == i]
+        # get all images for this class IF sup is True
+        print(X.shape)
+        print(sup.shape)
+        #print(np.count_nonzero(sup[y == i] == True))
+        #print(np.count_nonzero((y == i & sup) == True))
+        X_with_class = X[(y == i) & sup]
+        print(X_with_class.shape)
+        #xz_with_class = xz[y == i]
+        #yz_with_class = yz[y == i]
+        #xy_with_class = xy[y == i]
         # choose random instances
-        ix = np.random.randint(0, len(xz_with_class), n_per_class)
+        ix = np.random.randint(0, len(X_with_class), n_per_class)
+        print(ix.shape)
+        # Ensure enough samples in each class.
+        assert ix.shape[0] == n_per_class, f'Not enough class {i} sup samples'
         # add to list
-        #[X_list.append(X_with_class[j]) for j in ix]
-        [xz_list.append(xz_with_class[j]) for j in ix]
-        [yz_list.append(yz_with_class[j]) for j in ix]
-        [xy_list.append(xy_with_class[j]) for j in ix]
+        [X_list.append(X_with_class[j]) for j in ix]
+        #[xz_list.append(xz_with_class[j]) for j in ix]
+        #[yz_list.append(yz_with_class[j]) for j in ix]
+        #[xy_list.append(xy_with_class[j]) for j in ix]
         [y_list.append(i) for j in ix]
-    return np.asarray(xz_list), np.asarray(yz_list), np.asarray(xy_list), np.asarray(y_list)
+    return np.asarray(X_list), np.asarray(y_list)
+    # return np.asarray(xz_list), np.asarray(yz_list), np.asarray(xy_list), np.asarray(y_list)
 
 # select real samples
-
-
 def generate_real_samples(dataset, n_samples):
     # split into images and labels
-    #images, labels = dataset
-    xz_images, yz_images, xy_images, labels = dataset
+    images, labels, *_ = dataset
+    #xz_images, yz_images, xy_images, labels = dataset
     # choose random instances
-    #ix = np.random.randint(0, images.shape[0], n_samples)
-    ix = np.random.randint(0, labels.shape[0], n_samples)
+    ix = np.random.randint(0, images.shape[0], n_samples)
+    #ix = np.random.randint(0, labels.shape[0], n_samples)
     # select images and labels
-    #X, labels = images[ix], labels[ix]
-    xz, yz, xy, labels = xz_images[ix], yz_images[ix], xy_images[ix], labels[ix]
+    X, labels = images[ix], labels[ix]
+    #xz, yz, xy, labels = xz_images[ix], yz_images[ix], xy_images[ix], labels[ix]
     # generate class labels
     y = np.ones((n_samples, 1))
-    #return [X, labels], y
-    return [xz, yz, xy, labels], y
+    return [X, labels], y
+    # return [xz, yz, xy, labels], y
 
 # generate points in latent space as input for the generator
 
@@ -821,26 +860,29 @@ def generate_real_samples(dataset, n_samples):
 def generate_latent_points(latent_dim, n_samples):
     # generate points in the latent space
     rng = np.random.default_rng()
-    #return rng.standard_normal(size=(n_samples, latent_dim))
-    xz_points = rng.standard_normal(size=(n_samples, latent_dim))
-    yz_points = rng.standard_normal(size=(n_samples, latent_dim))
-    xy_points = rng.standard_normal(size=(n_samples, latent_dim))
-    return xz_points, yz_points, xy_points
+    return rng.standard_normal(size=(n_samples, latent_dim))
+    #xz_points = rng.standard_normal(size=(n_samples, latent_dim))
+    #yz_points = rng.standard_normal(size=(n_samples, latent_dim))
+    #xy_points = rng.standard_normal(size=(n_samples, latent_dim))
+    # return xz_points, yz_points, xy_points
 
 # use the generator to generate n fake examples, with class labels
 
 
 def generate_fake_samples(generator, latent_dim, n_samples):
     # generate points in latent space
-    #z_input = generate_latent_points(latent_dim, n_samples)
-    xz_input, yz_input, xy_input = generate_latent_points(latent_dim, n_samples)
+    #xz_input = generate_latent_points(latent_dim, n_samples)
+    #yz_input = generate_latent_points(latent_dim, n_samples)
+    #xy_input = generate_latent_points(latent_dim, n_samples)
+    input = generate_latent_points(latent_dim, n_samples)
+    #xz_input, yz_input, xy_input = generate_latent_points(latent_dim, n_samples)
     # predict outputs
-    #images = generator.predict(z_input)
-    xz_images, yz_images, xy_images = generator.predict([xz_input, yz_input, xy_input])
+    images = generator.predict(input)
+    #xz_images, yz_images, xy_images = generator.predict([xz_input, yz_input, xy_input])
     # create class labels
     y = np.zeros((n_samples, 1))
-    #return images, y
-    return xz_images, yz_images, xy_images, y
+    return images, y
+    # return xz_images, yz_images, xy_images, y
 
 # generate samples and save as a plot and save the model
 
@@ -863,11 +905,13 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     # pyplot.savefig(filename1)
     # pyplot.close()
     # evaluate the classifier model
-    #X, y = dataset
-    xz, yz, xy, y = dataset
-    #_, acc = c_model.evaluate(X, y, verbose=1)
-    _, acc = c_model.evaluate([xz, yz, xy], y, verbose=1)
+    X, y, _ = dataset
+    #xz, yz, xy, y = dataset
+    _, acc = c_model.evaluate([X[..., 0], X[..., 1], X[..., 2]], y)
+    #_, acc = c_model.evaluate([xz, yz, xy], y, verbose=1)
     print('Classifier Accuracy: %.3f%%' % (acc * 100))
+    # reset metrics to avoid accumlation in next model operation
+    c_model.reset_metrics()
     # save the generator model
     #filename2 = 'g_model_%04d.h5' % (step+1)
     # g_model.save(filename2)
@@ -879,10 +923,11 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
 # train the generator and discriminator
 
 
-def train(g_model, d_model, c_model, gan_model, dataset, latent_dim=100, n_epochs=10, n_batch=64):
+def train(g_model, d_model, c_model, gan_model, dataset, val_set, class_weight, n_classes, latent_dim=100, n_epochs=10, n_batch=64):
     # select supervised dataset
-    #X_sup, y_sup = select_supervised_samples(dataset)
-    xz_sup, yz_sup, xy_sup, y_sup = select_supervised_samples(dataset)
+    X_sup, y_sup = select_supervised_samples(dataset, n_classes=n_classes)
+    #print(X_sup.shape, y_sup.shape)
+    #xz_sup, yz_sup, xy_sup, y_sup = select_supervised_samples(dataset)
     #print(xz_sup.shape, yz_sup.shape, xy_sup.shape, y_sup.shape)
     # calculate the number of batches per training epoch
     bat_per_epo = int(dataset[0].shape[0] / n_batch)
@@ -895,33 +940,39 @@ def train(g_model, d_model, c_model, gan_model, dataset, latent_dim=100, n_epoch
     # manually enumerate epochs
     for i in range(n_steps):
         # update supervised discriminator (c)
-        [xz_sup_real, yz_sup_real, xy_sup_real, ysup_real], _ = generate_real_samples(
-            #[X_sup, y_sup], half_batch)
-            [xz_sup, yz_sup, xy_sup, y_sup], half_batch)
-        #c_loss, c_acc = c_model.train_on_batch(Xsup_real, ysup_real)
-        c_loss, c_acc = c_model.train_on_batch([xz_sup_real, yz_sup_real, xy_sup_real], ysup_real)
+        [Xsup_real, ysup_real], _ = generate_real_samples(
+            [X_sup, y_sup], half_batch)
+        c_loss, c_acc = c_model.train_on_batch(
+            [Xsup_real[..., 0], Xsup_real[..., 1], Xsup_real[..., 2]], ysup_real)
+        #c_loss, c_acc = c_model.train_on_batch([xz_sup_real, yz_sup_real, xy_sup_real], ysup_real)
         # update unsupervised discriminator (d)
-        #[X_real, _], y_real = generate_real_samples(dataset, half_batch)
-        [xz_real, yz_real, xy_real, _], y_real = generate_real_samples(dataset, half_batch)
-        #d_loss1 = d_model.train_on_batch(X_real, y_real)
-        d_loss1 = d_model.train_on_batch([xz_real, yz_real, xy_real], y_real)
-        #X_fake, y_fake = generate_fake_samples(g_model, latent_dim, half_batch)
-        xz_fake, yz_fake, xy_fake, y_fake = generate_fake_samples(g_model, latent_dim, half_batch)
-        #d_loss2 = d_model.train_on_batch(X_fake, y_fake)
-        d_loss2 = d_model.train_on_batch([xz_fake, yz_fake, xy_fake], y_fake)
+        [X_real, _], y_real = generate_real_samples(dataset, half_batch)
+        #[xz_real, yz_real, xy_real, _], y_real = generate_real_samples(dataset, half_batch)
+        dr_loss, dr_acc = d_model.train_on_batch(
+            [X_real[..., 0], X_real[..., 1], X_real[..., 2]], y_real, class_weight=class_weight)
+        #d_loss1 = d_model.train_on_batch([xz_real, yz_real, xy_real], y_real)
+        X_fake, y_fake = generate_fake_samples(g_model, latent_dim, half_batch)
+        #xz_fake, yz_fake, xy_fake, y_fake = generate_fake_samples(g_model, latent_dim, half_batch)
+        df_loss, df_acc = d_model.train_on_batch(X_fake, y_fake)
+        #d_loss2 = d_model.train_on_batch([xz_fake, yz_fake, xy_fake], y_fake)
         # update generator (g)
-        #X_gan, y_gan = generate_latent_points(
-            #latent_dim, n_batch), np.ones((n_batch, 1))
-        [xz_gan, yz_gan, xy_gan], y_gan = generate_latent_points(
-            latent_dim, n_batch), np.ones((n_batch, 1))
-        #g_loss = gan_model.train_on_batch(X_gan, y_gan)
-        gan_loss = gan_model.train_on_batch([xz_gan, yz_gan, xy_gan], y_gan)
+        #X_gan, y_gan = generate_latent_points(latent_dim, n_batch), np.ones((n_batch, 1))
+        #xz_gan = generate_latent_points(latent_dim, n_batch)
+        #yz_gan = generate_latent_points(latent_dim, n_batch)
+        #xy_gan = generate_latent_points(latent_dim, n_batch)
+        X_gan = generate_latent_points(latent_dim, n_batch)
+        y_gan = np.ones((n_batch, 1))
+        # [xz_gan, yz_gan, xy_gan], y_gan = generate_latent_points(
+        # latent_dim, n_batch), np.ones((n_batch, 1))
+        g_loss, g_acc = gan_model.train_on_batch(X_gan, y_gan)
+        #gan_loss = gan_model.train_on_batch([xz_gan, yz_gan, xy_gan], y_gan)
         # summarize loss on this batch
-        print('>%d, c[%.3f,%.0f], d[%.3f,%.3f], gan[%.3f]' %
-              (i+1, c_loss, c_acc*100, d_loss1, d_loss2, gan_loss))
+        print('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
+              (i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
         # evaluate the model performance every so often
         if (i+1) % (bat_per_epo * 1) == 0:
-            summarize_performance(i, g_model, c_model, latent_dim, dataset)
+            summarize_performance(i, g_model, c_model,
+                                  latent_dim, val_set)
 
 
 if __name__ == '__main__':
@@ -929,6 +980,8 @@ if __name__ == '__main__':
     default_log_file = 'train-results/train.log'
     # Training datasets.
     default_datasets = ['datasets/radar_samples.pickle']
+    # Supervised datasets.
+    default_datasets_as_sup = []
     # SVM confusion matrix name.
     default_svm_cm = 'train-results/svm_cm.png'
     # SVM model name.
@@ -955,6 +1008,11 @@ if __name__ == '__main__':
         '--datasets', nargs='+', type=str,
         help='paths to training datasets',
         default=default_datasets
+    )
+    parser.add_argument(
+        '--datasets_as_sup', nargs='+', type=str,
+        help='dataset(s) for supervised training',
+        default=default_datasets_as_sup
     )
     parser.add_argument(
         '--desired_labels', nargs='+', type=str,
@@ -1018,9 +1076,7 @@ if __name__ == '__main__':
     )
 
     # Combine multiple datasets if given.
-    samples = []
-    labels = []
-
+    samples, labels, samples_sup = [], [], []
     for dataset in args.datasets:
         logger.info(f'Opening dataset: {dataset}')
         try:
@@ -1032,6 +1088,9 @@ if __name__ == '__main__':
         logger.debug(f'Found class labels: {set(data_pickle["labels"])}.')
         samples.extend(data_pickle['samples'])
         labels.extend(data_pickle['labels'])
+        samples_sup.extend([True] * len(data_pickle['samples'])
+                           if dataset in args.datasets_as_sup or not args.datasets_as_sup
+                           else [False] * len(data_pickle['samples']))
 
     # Use alised class names.
     CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
@@ -1046,7 +1105,7 @@ if __name__ == '__main__':
             )
         )
 
-    data = {'samples': samples, 'labels': labels}
+    data = {'samples': samples, 'labels': labels, 'samples_sup': samples_sup}
 
     # Filter desired classes.
     logger.info('Maybe filtering classes.')
@@ -1077,6 +1136,7 @@ if __name__ == '__main__':
         logger.info(
             f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
 
+    """
     # Split data and labels up into train, validation and test sets.
     logger.info(f'Splitting data set:')
     train_frac, val_frac, test_frac = args.train_val_test_frac
@@ -1090,6 +1150,7 @@ if __name__ == '__main__':
     logger.info(f'...training samples: {len(X_train)}')
     logger.info(f'...validation samples: {len(X_val)}')
     logger.info(f'...test samples: {len(X_test)}')
+    """
 
     proj_mask = common.ProjMask(*args.proj_mask)
     logger.info(f'Projection mask: {proj_mask}')
@@ -1148,11 +1209,31 @@ if __name__ == '__main__':
     # define the combined generator and discriminator model, for updating the generator
     def define_gan(g_model, d_model):
         # make weights in the discriminator not trainable
-        d_model.trainable = False
+        for layer in d_model.layers:
+            if not isinstance(layer, tf.keras.layers.BatchNormalization):
+                layer.trainable = False
         # connect image output from generator as input to discriminator
         gan_output = d_model(g_model.output)
         # define gan model as taking noise and outputting a classification
-        model = Model(g_model.input, gan_output)
+        model = Model(inputs=g_model.input, outputs=gan_output, name='gan')
+        # compile model
+        opt = tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5)
+        model.compile(loss='binary_crossentropy',
+                      optimizer=opt, metrics=['accuracy'])
+        return model
+
+    # define the combined generator and discriminator model, for updating the generator
+    def define_gan_s(generator, discriminator):
+        # make weights in the discriminator not trainable
+        for layer in discriminator.layers:
+            if not isinstance(layer, tf.keras.layers.BatchNormalization):
+                layer.trainable = False
+        # connect them
+        model = tf.keras.models.Sequential()
+        # add generator
+        model.add(generator)
+        # add the discriminator
+        model.add(discriminator)
         # compile model
         opt = tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5)
         model.compile(loss='binary_crossentropy', optimizer=opt)
@@ -1185,9 +1266,56 @@ if __name__ == '__main__':
 
     #X = np.stack([xz[::3], yz[::3], xy[::3]])
 
-    # Gather up projections in each sample point.
+    # Gather up projections in each sample point
     xz, yz, xy = [], [], []
     for s in samples:
+        xz.append(np.resize(s[0], (80, 80)))
+        yz.append(np.resize(s[1], (80, 80)))
+        xy.append(np.resize(s[2], (80, 80)))
+    xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
+
+    xz = xz[..., np.newaxis]
+    yz = yz[..., np.newaxis]
+    xy = xy[..., np.newaxis]
+    print(xz.shape, yz.shape, xy.shape)
+    samples = np.concatenate((xz, yz, xy), axis=3)
+    print(samples.shape)
+
+    encoded_labels = np.array(encoded_labels)
+    print(encoded_labels.shape)
+    samples_sup = np.array(samples_sup)
+    print(samples_sup.shape)
+
+    # Shuffle dataset.
+    rng = np.random.default_rng()
+    idx = np.arange(len(samples))
+    rng.shuffle(idx)
+    print(idx.shape)
+    samples, encoded_labels, samples_sup = samples[idx], encoded_labels[idx], samples_sup[idx]
+
+    # Split dataset.
+    split = int(samples.shape[0] * 0.8)
+    print(split)
+    X_train, y_train, sup_train = samples[:split], encoded_labels[:split], samples_sup[:split]
+    X_val, y_val, sup_val = samples[split:], encoded_labels[split:], samples_sup[split:]
+
+    # Balance train set. 
+    X_train, y_train, sup_train = balance_classes(X_train, y_train, sup_train)
+
+    # Shuffle balanced train set.
+    rng = np.random.default_rng()
+    idx = np.arange(len(X_train))
+    rng.shuffle(idx)
+    X_train, y_train, sup_train = X_train[idx], y_train[idx], sup_train[idx]
+    print(sup_train)
+    print(np.count_nonzero(sup_train == True))
+
+    print(X_train.shape, y_train.shape, sup_train.shape, X_val.shape, y_val.shape, sup_val.shape)
+
+    """
+    # Gather up projections in each sample point (train)
+    xz, yz, xy = [], [], []
+    for s in X_train:
         xz.append(np.resize(s[0], (80, 80)))
         yz.append(np.resize(s[1], (80, 80)))
         xy.append(np.resize(s[2], (80, 80)))
@@ -1200,16 +1328,52 @@ if __name__ == '__main__':
 
     print(xz.shape, yz.shape, xy.shape)
 
-    y = np.array(encoded_labels)
+    # channel 0 = xz, ch 1 = yz, ch2 = xy
+    X_train = np.concatenate((xz, yz, xy), axis=3)
 
-    print(y.shape)
+    y_train = np.array(y_train)
+
+    X_train, y_train = balance_classes(X_train, y_train)
 
     rng = np.random.default_rng()
-    idx = np.arange(y.shape[0])
+    idx = np.arange(X_train.shape[0])
     rng.shuffle(idx)
-    xz, yz, xy, y = xz[idx], yz[idx], xy[idx], y[idx]
+    X_train, y_train = X_train[idx], y_train[idx]
+
+    print(X_train.shape)
+    print(y_train.shape)
+
+    # Gather up projections in each sample point (val)
+    xz, yz, xy = [], [], []
+    for s in X_val:
+        xz.append(np.resize(s[0], (80, 80)))
+        yz.append(np.resize(s[1], (80, 80)))
+        xy.append(np.resize(s[2], (80, 80)))
+
+    xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
+
+    xz = xz[..., np.newaxis]
+    yz = yz[..., np.newaxis]
+    xy = xy[..., np.newaxis]
+
+    print(xz.shape, yz.shape, xy.shape)
+
+    # channel 0 = xz, ch 1 = yz, ch2 = xy
+    X_val = np.concatenate((xz, yz, xy), axis=3)
+
+    y_val = np.array(y_val)
+
+    rng = np.random.default_rng()
+    idx = np.arange(X_val.shape[0])
+    rng.shuffle(idx)
+    X_val, y_val = X_val[idx], y_val[idx]
+
+    print(X_val.shape)
+    print(y_val.shape)
+    """
 
     # train model
-    train(g_model, d_model, c_model, gan_model, (xz, yz, xy, y))
+    train(g_model, d_model, c_model, gan_model, (X_train, y_train, sup_train),
+          (X_val, y_val, sup_val), class_weight=None, n_classes=num_classes)
 
     # c_model.evaluate(val_dataset)

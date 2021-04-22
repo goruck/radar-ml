@@ -40,42 +40,41 @@ import common
 logger = logging.getLogger(__name__)
 
 RANDOM_SEED = 1234
-
-# Random number generator. 
 rng = np.random.default_rng(RANDOM_SEED)
+
+# Projection rescaling factor.
+RESCALE = (80, 80)
 
 # define the standalone generator model
 def create_g_conv_layers(input, init):
     n_nodes = 5 * 5 * 128
-
     conv = layers.Dense(n_nodes, kernel_initializer=init)(input)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-
+    conv = layers.ReLU()(conv)
     conv = layers.Reshape((5, 5, 128))(conv)
 
-    # upsample to 10 x 10
+    # Upsample.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.ReLU()(conv)
 
-    # upsample to 20 x 20
+    # Upsample.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.ReLU()(conv)
 
-    # upsample to 40 x 40
+    # Upsample.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.ReLU()(conv)
 
-    # upsample to 80 x 80
+    # Upsample.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
+    conv = layers.ReLU()(conv)
 
     return layers.Conv2D(1, (7, 7), activation='tanh', padding='same', kernel_initializer=init)(conv)
 
@@ -84,6 +83,11 @@ def define_generator(latent_dim=100):
     #init= initializers.GlorotUniform()
 
     input = layers.Input(shape=(latent_dim,))
+
+    #n_nodes = 4 * 4 * 128
+    #dense = layers.Dense(n_nodes, kernel_initializer=init)(input)
+    #dense = layers.ReLU()(dense)
+    #dense = layers.Reshape((4, 4, 128))(dense)
 
     xz_model = create_g_conv_layers(input, init)
     yz_model = create_g_conv_layers(input, init)
@@ -101,31 +105,34 @@ def custom_activation(output):
 def create_d_conv_layers(input_scan, init):
     input_shape = input_scan.shape[1:]
 
-    # downsample
-    conv = layers.Conv2D(128, (4, 4), strides=(
+    # Downsample.
+    conv = layers.Conv2D(128, (3, 3), strides=(
         2, 2), padding='same', input_shape=input_shape, kernel_initializer=init)(input_scan)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    # downsample
-    conv = layers.Conv2D(128, (4, 4), strides=(
+    # downsample.
+    conv = layers.Conv2D(64, (3, 3), strides=(
         2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    # downsample
-    conv = layers.Conv2D(128, (4, 4), strides=(
+    # Downsample.
+    conv = layers.Conv2D(32, (3, 3), strides=(
         2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    conv = layers.GlobalMaxPooling2D()(conv)
+    #conv = layers.GlobalMaxPooling2D()(conv)
+
+    # Flatten feature maps. 
+    conv = layers.Flatten()(conv)
 
     return conv
 
 # define the standalone supervised and unsupervised discriminator models
 # Input ordering is xz, yz, xy.
-def define_discriminator(xz_shape=(80, 80, 1), yz_shape=(80, 80, 1), xy_shape=(80, 80, 1), n_classes=3):
+def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     init = initializers.RandomNormal(mean=0.0, stddev=0.02)
     #init = initializers.GlorotUniform()
 
@@ -137,12 +144,13 @@ def define_discriminator(xz_shape=(80, 80, 1), yz_shape=(80, 80, 1), xy_shape=(8
     xy_model = create_d_conv_layers(xy_input, init)
 
     conv = layers.concatenate([xz_model, yz_model, xy_model])
+
     #conv = layers.Flatten()(conv)
 
-    conv = layers.Dense(128, kernel_initializer=init)(conv)
-    conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.5)(conv)
+    #conv = layers.Dense(128, kernel_initializer=init)(conv)
+    #conv = layers.BatchNormalization()(conv)
+    #conv = layers.LeakyReLU(alpha=0.2)(conv)
+    #conv = layers.Dropout(0.5)(conv)
 
     conv = layers.Dense(128, kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
@@ -340,6 +348,14 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
 
     return data_balanced, labels_balanced, samples_sup_balanced
 
+# smoothing class=1 to [0.7, 1.2]
+def smooth_positive_labels(y):
+    return y - 0.3 + (np.random.random(y.shape) * 0.5)
+
+# smoothing class=0 to [0.0, 0.3]
+def smooth_negative_labels(y):
+    return y + np.random.random(y.shape) * 0.3
+
 # select a supervised subset of the dataset, ensures classes are balanced
 def select_supervised_samples(dataset, n_samples=150, n_classes=3):
     X, y, sup = dataset
@@ -362,17 +378,14 @@ def select_supervised_samples(dataset, n_samples=150, n_classes=3):
 def generate_real_samples(dataset, n_samples):
     # split into images and labels
     images, labels, *_ = dataset
-    #xz_images, yz_images, xy_images, labels = dataset
     # choose random instances
     ix = np.random.randint(0, images.shape[0], n_samples)
-    #ix = np.random.randint(0, labels.shape[0], n_samples)
     # select images and labels
     X, labels = images[ix], labels[ix]
-    #xz, yz, xy, labels = xz_images[ix], yz_images[ix], xy_images[ix], labels[ix]
     # generate class labels
     y = np.ones((n_samples, 1))
+    y = smooth_positive_labels(y)
     return [X, labels], y
-    # return [xz, yz, xy, labels], y
 
 # generate points in latent space as input for the generator
 def generate_latent_points(latent_dim, n_samples):
@@ -388,6 +401,7 @@ def generate_fake_samples(generator, latent_dim, n_samples):
     images = generator.predict(input)
     # create class labels
     y = np.zeros((n_samples, 1))
+    y = smooth_negative_labels(y)
     return images, y
 
 # generate samples and save as a plot and save the model
@@ -425,7 +439,7 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     #print('>Saved: %s, %s, and %s' % (filename1, filename2, filename3))
 
 # train the generator and discriminator
-def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w_classes=None, latent_dim=100, n_epochs=10, n_batch=64):
+def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w_classes=None, latent_dim=100, n_epochs=20, n_batch=64):
     # select supervised dataset
     X_sup, y_sup = select_supervised_samples(train_set, n_classes=n_classes)
     # calculate the number of batches per training epoch
@@ -450,14 +464,14 @@ def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w
         df_loss, df_acc = d_model.train_on_batch(X_fake, y_fake)
         # update generator (g)
         X_gan, y_gan = generate_latent_points(latent_dim, n_batch), np.ones((n_batch, 1))
+        y_gan = smooth_positive_labels(y_gan)
         g_loss, g_acc = gan_model.train_on_batch(X_gan, y_gan)
         # summarize loss on this batch
         print('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
               (i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
         # evaluate the model performance every so often
         if (i+1) % (bat_per_epo * 1) == 0:
-            summarize_performance(i, g_model, c_model,
-                                  latent_dim, val_set)
+            summarize_performance(i, g_model, c_model, latent_dim, val_set)
 
 if __name__ == '__main__':
     # Log file name.
@@ -596,6 +610,7 @@ if __name__ == '__main__':
         logger.info(
             f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
 
+    # Calculate number of classes and weighting.
     counter = collections.Counter(encoded_labels)
     max_v = float(max(counter.values()))
     w_classes = {cls: max_v / v for cls, v in counter.items()}
@@ -603,58 +618,54 @@ if __name__ == '__main__':
     n_classes = len(list(counter))
     logger.info(f'number of classes: {n_classes}')
 
-    d_model, c_model = define_discriminator(n_classes=n_classes)
-    d_model.summary()
-    c_model.summary()
-
-    # create the generator
-    g_model = define_generator()
-    #g_model = make_generator_model()
-    g_model.summary()
-
-    # create the gan
-    gan_model = define_gan(g_model, d_model)
-    gan_model.summary()
-
+    # Prepare data set for training.
     # Gather up projections in each sample.
     xz, yz, xy = [], [], []
     for s in samples:
-        xz.append(np.resize(s[0], (80, 80)))
-        yz.append(np.resize(s[1], (80, 80)))
-        xy.append(np.resize(s[2], (80, 80)))
+        xz.append(np.resize(s[0], RESCALE))
+        yz.append(np.resize(s[1], RESCALE))
+        xy.append(np.resize(s[2], RESCALE))
     xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
-
     # Make 3D (add channel axis).
     xz = xz[..., np.newaxis]
     yz = yz[..., np.newaxis]
     xy = xy[..., np.newaxis]
     print(xz.shape, yz.shape, xy.shape)
-
     # channel 0 = xz, ch 1 = yz, ch2 = xy
     samples = np.concatenate((xz, yz, xy), axis=3)
     print(samples.shape)
-
+    # Encode labels.
     encoded_labels = np.array(encoded_labels)
     print(encoded_labels.shape)
-
+    # Make boolean nparray from supervised samples mask. 
     samples_sup = np.array(samples_sup, dtype=bool)
     print(samples_sup.shape)
-
     # Shuffle dataset.
     idx = np.arange(samples.shape[0])
     rng.shuffle(idx)
     samples, encoded_labels, samples_sup = samples[idx], encoded_labels[idx], samples_sup[idx]
-
     # Split dataset.
     split = int(samples.shape[0] * 0.8)
     X_train, y_train, sup_train = samples[:split], encoded_labels[:split], samples_sup[:split]
     X_val, y_val = samples[split:], encoded_labels[split:]
-
-    # Balance training set. 
+    # Balance training set (if uncomment below set w_classes=None)
     X_train, y_train, sup_train = balance_classes(X_train, y_train, sup_train)
-
     print(X_train.shape, y_train.shape, sup_train.shape, X_val.shape, y_val.shape)
 
-    # train model
+    # Instanciate models.
+    # Create classifier and discriminator.
+    shape = RESCALE + (1,)
+    d_model, c_model = define_discriminator(
+        xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
+    d_model.summary()
+    c_model.summary()
+    # Create generator.
+    g_model = define_generator()
+    g_model.summary()
+    # Create gan.
+    gan_model = define_gan(g_model, d_model)
+    gan_model.summary()
+
+    # Train.
     train(g_model, d_model, c_model, gan_model, (X_train, y_train, sup_train),
-         (X_val, y_val), n_classes=n_classes, w_classes=w_classes)
+         (X_val, y_val), n_classes=n_classes, w_classes=None)

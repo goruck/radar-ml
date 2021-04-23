@@ -43,34 +43,34 @@ RANDOM_SEED = 1234
 rng = np.random.default_rng(RANDOM_SEED)
 
 # Projection rescaling factor.
-RESCALE = (80, 80)
+RESCALE = (128, 128)
 
 # define the standalone generator model
 def create_g_conv_layers(input, init):
-    n_nodes = 5 * 5 * 128
+    n_nodes = 8 * 8 * 128
     conv = layers.Dense(n_nodes, kernel_initializer=init)(input)
     conv = layers.ReLU()(conv)
-    conv = layers.Reshape((5, 5, 128))(conv)
+    conv = layers.Reshape((8, 8, 128))(conv)
 
-    # Upsample.
+    # Upsample to 16x16.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.ReLU()(conv)
 
-    # Upsample.
+    # Upsample to 32x32.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.ReLU()(conv)
 
-    # Upsample.
+    # Upsample to 64x64.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.ReLU()(conv)
 
-    # Upsample.
+    # Upsample to 128x128.
     conv = layers.Conv2DTranspose(
         128, (4, 4), strides=(2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
@@ -105,19 +105,19 @@ def custom_activation(output):
 def create_d_conv_layers(input_scan, init):
     input_shape = input_scan.shape[1:]
 
-    # Downsample.
+    # Downsample to 64x64.
     conv = layers.Conv2D(128, (3, 3), strides=(
         2, 2), padding='same', input_shape=input_shape, kernel_initializer=init)(input_scan)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    # downsample.
+    # Downsample to 32x32.
     conv = layers.Conv2D(64, (3, 3), strides=(
         2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)
     conv = layers.LeakyReLU(alpha=0.2)(conv)
 
-    # Downsample.
+    # Downsample to 16x16.
     conv = layers.Conv2D(32, (3, 3), strides=(
         2, 2), padding='same', kernel_initializer=init)(conv)
     conv = layers.BatchNormalization()(conv)

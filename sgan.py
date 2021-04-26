@@ -1,7 +1,7 @@
 """
-radar-ml using GAN.
+radar-ml using SGAN.
 
-Copyright (c) 2020 Lindo St. Angel
+Copyright (c) 2020~2021 Lindo St. Angel
 """
 
 import os
@@ -11,31 +11,18 @@ import argparse
 import logging
 import sys
 import functools
-import itertools
-import time
-import datetime
 
 import numpy as np
-from numpy.core.fromnumeric import nonzero, size
 from scipy import ndimage
 import matplotlib.pyplot as plt
-from sklearn import (model_selection, metrics, preprocessing, linear_model,
-                     svm, utils, calibration)
+from sklearn import preprocessing, utils
 import tensorflow as tf
-from tensorflow.core.framework.types_pb2 import _DATATYPE
 from tensorflow.keras import layers
 from tensorflow.keras import backend
 from tensorflow.keras import Model
 from tensorflow.keras import initializers
-#from IPython import display
 
 import common
-
-# Uncomment line below to print all elements of numpy arrays.
-#np.set_printoptions(threshold=sys.maxsize)
-
-# Uncomment line below to disable TF warnings.
-#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +31,9 @@ rng = np.random.default_rng(RANDOM_SEED)
 
 # Projection rescaling factor.
 RESCALE = (128, 128)
+
+# Uncomment line below to print all elements of numpy arrays.
+np.set_printoptions(threshold=sys.maxsize)
 
 # define the standalone generator model
 def create_g_conv_layers(input, init):
@@ -126,7 +116,7 @@ def create_d_conv_layers(input_scan, init):
     #conv = layers.GlobalMaxPooling2D()(conv)
 
     # Flatten feature maps. 
-    conv = layers.Flatten()(conv)
+    #conv = layers.Flatten()(conv)
 
     return conv
 
@@ -145,9 +135,9 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
 
     conv = layers.concatenate([xz_model, yz_model, xy_model])
 
-    #conv = layers.Flatten()(conv)
+    conv = layers.Flatten()(conv)
 
-    #conv = layers.Dense(128, kernel_initializer=init)(conv)
+    #conv = layers.Dense(64, kernel_initializer=init)(conv)
     #conv = layers.BatchNormalization()(conv)
     #conv = layers.LeakyReLU(alpha=0.2)(conv)
     #conv = layers.Dropout(0.5)(conv)
@@ -193,8 +183,6 @@ def define_gan(g_model, d_model):
     return model
 
 def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
-    rg = np.random.Generator(np.random.PCG64())
-
     def clamp(p):
         p[p > 1.0] = 1.0
         p[p < -1.0] = -1.0
@@ -259,7 +247,7 @@ def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
 
     def add_noise(p, sd):
         """Add Gaussian noise."""
-        p += rg.normal(scale=sd)
+        p += rng.normal(scale=sd)
         return clamp(p)
 
     # Generate new tuple of rotated projections.
@@ -307,9 +295,8 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
     # Use that list again to build a list of samples_sup sets corresponding to each class.
     samples_sup_list = [samples_sup[i] for i in indices]
 
-    # Upsample data and label sets.
+    # Upsample.
     _, majority_size = mc[0]
-
     def upsample(samples):
         return utils.resample(
             samples,
@@ -333,10 +320,9 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
     )
 
     if shuffle:
-        idx = np.arange(samples.shape[0])
+        idx = np.arange(labels_balanced.size)
         rng.shuffle(idx)
-        data_balanced, labels_balanced, samples_sup_balanced = data_balanced[
-            idx], labels_balanced[idx], samples_sup_balanced[idx]
+        data_balanced, labels_balanced, samples_sup_balanced = data_balanced[idx], labels_balanced[idx], samples_sup_balanced[idx]
 
     c = collections.Counter(labels_balanced)
     mc = c.most_common()
@@ -344,22 +330,24 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
     print(f'Balanced most common: {mc}')
     print(f'Balanced label len: {len(labels_balanced)}')
     print(f'Balanced data len: {len(data_balanced)}')
-    print(f'Balanced smaples_sup len: {len(samples_sup_balanced)}')
+    print(f'Balanced samples_sup len: {len(samples_sup_balanced)}')
 
     return data_balanced, labels_balanced, samples_sup_balanced
 
 # smoothing class=1 to [0.7, 1.2]
 def smooth_positive_labels(y):
     return y - 0.3 + (np.random.random(y.shape) * 0.5)
+    #return y
 
 # smoothing class=0 to [0.0, 0.3]
 def smooth_negative_labels(y):
     return y + np.random.random(y.shape) * 0.3
+    #return y
 
 # select a supervised subset of the dataset, ensures classes are balanced
-def select_supervised_samples(dataset, n_samples=150, n_classes=3):
+def select_supervised_samples(dataset, n_samples=75, n_classes=3):
     X, y, sup = dataset
-    X_list, y_list = list(), list()
+    X_list, y_list = [], []
     n_per_class = int(n_samples / n_classes)
 
     for i in range(n_classes):
@@ -390,7 +378,6 @@ def generate_real_samples(dataset, n_samples):
 # generate points in latent space as input for the generator
 def generate_latent_points(latent_dim, n_samples):
     # generate points in the latent space
-    rng = np.random.default_rng()
     return rng.standard_normal(size=(n_samples, latent_dim))
 
 # use the generator to generate n fake examples, with class labels
@@ -427,8 +414,8 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     #xz, yz, xy, y = dataset
     _, acc = c_model.evaluate([X[..., 0], X[..., 1], X[..., 2]], y)
     #_, acc = c_model.evaluate([xz, yz, xy], y, verbose=1)
-    print('Classifier Accuracy: %.3f%%' % (acc * 100))
-    # reset metrics to avoid accumlation in next model operation
+    print(f'Classifier accuracy at step {step}: {acc*100:.2f}%')
+    # reset metrics to avoid accumulation in next model operation
     c_model.reset_metrics()
     # save the generator model
     #filename2 = 'g_model_%04d.h5' % (step+1)
@@ -467,8 +454,8 @@ def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w
         y_gan = smooth_positive_labels(y_gan)
         g_loss, g_acc = gan_model.train_on_batch(X_gan, y_gan)
         # summarize loss on this batch
-        print('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
-              (i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
+        #print('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
+              #(i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
         # evaluate the model performance every so often
         if (i+1) % (bat_per_epo * 1) == 0:
             summarize_performance(i, g_model, c_model, latent_dim, val_set)
@@ -488,16 +475,10 @@ if __name__ == '__main__':
     default_desired_labels = ['person', 'dog', 'cat', 'pet']
     # Each epoch augments entire data set (zero disables).
     default_epochs = 0
-    # Fraction of data set used for training, validation, testing.
-    # Must sum to 1.0.
-    default_train_val_test_frac = [0.8, 0.2, 0.0]
+    # Fraction of data set used for training, must be <=1.0.
+    default_train_split = 1.0
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--epochs', type=int,
-        help='number of augementation epochs',
-        default=default_epochs
-    )
     parser.add_argument(
         '--datasets', nargs='+', type=str,
         help='paths to training datasets',
@@ -529,9 +510,9 @@ if __name__ == '__main__':
         default='info'
     )
     parser.add_argument(
-        '--train_val_test_frac', nargs='+', type=float,
-        help='train, val, test fraction of data set. must sum to 1.0',
-        default=default_train_val_test_frac
+        '--train_split', type=float,
+        help='train fraction of data set',
+        default=default_train_split
     )
     parser.add_argument(
         '--log_file', type=str,
@@ -630,29 +611,26 @@ if __name__ == '__main__':
     xz = xz[..., np.newaxis]
     yz = yz[..., np.newaxis]
     xy = xy[..., np.newaxis]
-    print(xz.shape, yz.shape, xy.shape)
     # channel 0 = xz, ch 1 = yz, ch2 = xy
     samples = np.concatenate((xz, yz, xy), axis=3)
-    print(samples.shape)
     # Encode labels.
     encoded_labels = np.array(encoded_labels)
-    print(encoded_labels.shape)
     # Make boolean nparray from supervised samples mask. 
     samples_sup = np.array(samples_sup, dtype=bool)
-    print(samples_sup.shape)
     # Shuffle dataset.
     idx = np.arange(samples.shape[0])
     rng.shuffle(idx)
     samples, encoded_labels, samples_sup = samples[idx], encoded_labels[idx], samples_sup[idx]
     # Split dataset.
-    split = int(samples.shape[0] * 0.8)
+    split = min(int(samples.shape[0] * args.train_split), samples.shape[0])
+    print(int(samples.shape[0] * args.train_split), samples.shape[0], split)
     X_train, y_train, sup_train = samples[:split], encoded_labels[:split], samples_sup[:split]
     X_val, y_val = samples[split:], encoded_labels[split:]
     # Balance training set (if uncomment below set w_classes=None)
-    X_train, y_train, sup_train = balance_classes(X_train, y_train, sup_train)
-    print(X_train.shape, y_train.shape, sup_train.shape, X_val.shape, y_val.shape)
+    X_train_bal, y_train_bal, sup_train_bal = balance_classes(X_train, y_train, sup_train)
+    print(X_train_bal.shape, y_train_bal.shape, sup_train_bal.shape, X_val.shape, y_val.shape)
 
-    # Instanciate models.
+    # Instantiate models.
     # Create classifier and discriminator.
     shape = RESCALE + (1,)
     d_model, c_model = define_discriminator(
@@ -666,6 +644,9 @@ if __name__ == '__main__':
     gan_model = define_gan(g_model, d_model)
     gan_model.summary()
 
+    # If validation set is empty use pre-balanced training set instead. 
+    val_set = (X_val, y_val) if X_val.size > 0 else (X_train, y_train)
+
     # Train.
-    train(g_model, d_model, c_model, gan_model, (X_train, y_train, sup_train),
-         (X_val, y_val), n_classes=n_classes, w_classes=None)
+    train(g_model, d_model, c_model, gan_model, (X_train_bal, y_train_bal, sup_train_bal),
+         val_set=val_set, n_classes=n_classes, w_classes=None)

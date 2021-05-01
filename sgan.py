@@ -32,8 +32,12 @@ rng = np.random.default_rng(RANDOM_SEED)
 # Projection rescaling factor.
 RESCALE = (128, 128)
 
+# Class aliases.
+CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
+#CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'} # dogs and cats as pets
+
 # Uncomment line below to print all elements of numpy arrays.
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
 # define the standalone generator model
 def create_g_conv_layers(input, init):
@@ -71,13 +75,7 @@ def create_g_conv_layers(input, init):
 def define_generator(latent_dim=100):
     init = initializers.RandomNormal(mean=0.0, stddev=0.02)
     #init= initializers.GlorotUniform()
-
     input = layers.Input(shape=(latent_dim,))
-
-    #n_nodes = 4 * 4 * 128
-    #dense = layers.Dense(n_nodes, kernel_initializer=init)(input)
-    #dense = layers.ReLU()(dense)
-    #dense = layers.Reshape((4, 4, 128))(dense)
 
     xz_model = create_g_conv_layers(input, init)
     yz_model = create_g_conv_layers(input, init)
@@ -281,10 +279,10 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
     if len(set([c for _, c in mc])) == 1:
         return data, labels, samples_sup
 
-    print(f'Unbalanced most common: {mc}')
-    print(f'Unbalanced label len: {len(labels)}')
-    print(f'Unbalanced data len: {len(data)}')
-    print(f'Unbalanced samples_sup len: {len(samples_sup)}')
+    logger.debug(f'Unbalanced most common: {mc}')
+    logger.debug(f'Unbalanced label len: {len(labels)}')
+    logger.debug(f'Unbalanced data len: {len(data)}')
+    logger.debug(f'Unbalanced samples_sup len: {len(samples_sup)}')
 
     # Build a list of class indices from most common rankings.
     indices = [np.nonzero(labels == i)[0] for (i, _) in mc]
@@ -327,10 +325,10 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
     c = collections.Counter(labels_balanced)
     mc = c.most_common()
 
-    print(f'Balanced most common: {mc}')
-    print(f'Balanced label len: {len(labels_balanced)}')
-    print(f'Balanced data len: {len(data_balanced)}')
-    print(f'Balanced samples_sup len: {len(samples_sup_balanced)}')
+    logger.debug(f'Balanced most common: {mc}')
+    logger.debug(f'Balanced label len: {len(labels_balanced)}')
+    logger.debug(f'Balanced data len: {len(data_balanced)}')
+    logger.debug(f'Balanced samples_sup len: {len(samples_sup_balanced)}')
 
     return data_balanced, labels_balanced, samples_sup_balanced
 
@@ -345,7 +343,7 @@ def smooth_negative_labels(y):
     #return y
 
 # select a supervised subset of the dataset, ensures classes are balanced
-def select_supervised_samples(dataset, n_samples=75, n_classes=3):
+def select_supervised_samples(dataset, n_samples=150, n_classes=3):
     X, y, sup = dataset
     X_list, y_list = [], []
     n_per_class = int(n_samples / n_classes)
@@ -411,10 +409,8 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     # pyplot.close()
     # evaluate the classifier model
     X, y, *_ = dataset
-    #xz, yz, xy, y = dataset
     _, acc = c_model.evaluate([X[..., 0], X[..., 1], X[..., 2]], y)
-    #_, acc = c_model.evaluate([xz, yz, xy], y, verbose=1)
-    print(f'Classifier accuracy at step {step}: {acc*100:.2f}%')
+    logger.info(f'Classifier accuracy at step {step}: {acc*100:.2f}%')
     # reset metrics to avoid accumulation in next model operation
     c_model.reset_metrics()
     # save the generator model
@@ -435,7 +431,7 @@ def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w
     n_steps = bat_per_epo * n_epochs
     # calculate the size of half a batch of samples
     half_batch = int(n_batch / 2)
-    print('n_epochs=%d, n_batch=%d, 1/2=%d, b/e=%d, steps=%d' %
+    logger.info('n_epochs=%d, n_batch=%d, 1/2=%d, b/e=%d, steps=%d' %
           (n_epochs, n_batch, half_batch, bat_per_epo, n_steps))
     # manually enumerate epochs
     for i in range(n_steps):
@@ -454,11 +450,243 @@ def train(g_model, d_model, c_model, gan_model, train_set, val_set, n_classes, w
         y_gan = smooth_positive_labels(y_gan)
         g_loss, g_acc = gan_model.train_on_batch(X_gan, y_gan)
         # summarize loss on this batch
-        #print('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
-              #(i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
+        logger.debug('>%d, c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
+              (i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
         # evaluate the model performance every so often
         if (i+1) % (bat_per_epo * 1) == 0:
             summarize_performance(i, g_model, c_model, latent_dim, val_set)
+
+def get_datasets(args):
+    """Gets and parses dataset(s) from command line.
+
+    Args:
+        args (parser object): command line arguments.
+
+    Returns:
+        samples (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+        samples_sup: (list of bool): Radar samples to use for supervised learning.
+
+    Note:
+        Causes program to exit if dataset not found on filesystem. 
+    """
+
+    samples, labels, samples_sup = [], [], []
+
+    for dataset in args.datasets:
+        logger.info(f'Opening dataset: {dataset}')
+        try:
+            with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
+                data_pickle = pickle.load(fp)
+        except FileNotFoundError as e:
+            logger.error(f'Dataset not found: {e}')
+            exit(1)
+        logger.debug(f'Found class labels: {set(data_pickle["labels"])}.')
+        samples.extend(data_pickle['samples'])
+        labels.extend(data_pickle['labels'])
+        samples_sup.extend([True] * len(data_pickle['samples'])
+                           if dataset in args.datasets_as_sup or not args.datasets_as_sup
+                           else [False] * len(data_pickle['samples']))
+
+    return samples, labels, samples_sup
+
+def filter_data(args, samples, labels):
+    """ Filter desired classes and apply aliases. 
+
+    Args:
+        args (parser object): command line arguments.
+        samples (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+
+    Returns:
+        filtered_samples (list of tuples of np.arrays): Filtered and aliased radar samples. 
+        filtered_labels (list of strings): Filtered and aliased radar sample labels.
+
+    Note:
+        Returns original samples and labels if no filter and no aliases.
+    """
+    # Alias class names.
+    keys = CLASS_ALIAS.keys()
+    if set(labels) - set(keys):
+        logger.info('Using aliased class names.')
+        aliased_labels = list(
+            map(
+                lambda x: CLASS_ALIAS[x] if x in list(keys) else x,
+                labels
+            )
+        )
+    else:
+        aliased_labels = labels
+
+    # Filter desired samples and classes.
+    logger.info('Maybe filtering data set.')
+    filtered_labels = [l for l in aliased_labels if l in args.desired_labels]
+    filtered_samples = [s for i, s in enumerate(
+        samples) if aliased_labels[i] in args.desired_labels]
+
+    return filtered_samples, filtered_labels
+
+def preprocess_data(args, samples, labels, samples_sup):
+    """ Preprocess data set for use in training the models. 
+
+    Args:
+        args (parser object): command line arguments.
+        samples (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+        samples_sup: (list of bool): Mask representing radar samples to use for supervised learning.
+
+    Returns:
+        X_train_bal (list of np.arrays): Normalized and balanced training set observations.
+        y_train_bal (list of np.arrays): Encoded and balanced training set labels.
+        sup_train_bal (list of np.arrays): Balanced mask. 
+        val_set (tuple of list of np.arrays): Normalized validation set.
+
+    Note:
+        If split == 1.0 validation set = pre-balanced training set. 
+    """
+    # Scale each feature to the [-1, 1] range.
+    logger.info('Scaling samples.')
+    samples = [tuple(
+        (p - common.RADAR_MAX / 2) / (common.RADAR_MAX / 2) for p in s
+    ) for s in samples
+    ]
+
+    # Encode the labels.
+    logger.info('Encoding labels.')
+    le = preprocessing.LabelEncoder()
+    encoded_labels = le.fit_transform(labels)
+    class_names = list(le.classes_)
+
+    # Output data set summary.
+    logger.info(
+        f'Found {len(class_names)} classes and {len(labels)} samples:')
+    for i, c in enumerate(class_names):
+        logger.info(
+            f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
+
+    # Gather up projections in each sample.
+    xz, yz, xy = [], [], []
+    for s in samples:
+        xz.append(np.resize(s[0], RESCALE))
+        yz.append(np.resize(s[1], RESCALE))
+        xy.append(np.resize(s[2], RESCALE))
+    xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
+
+    # Make 3D (add channel axis).
+    xz = xz[..., np.newaxis]
+    yz = yz[..., np.newaxis]
+    xy = xy[..., np.newaxis]
+    # channel 0 = xz, ch 1 = yz, ch2 = xy
+    samples = np.concatenate((xz, yz, xy), axis=3)
+
+    # Encode labels.
+    encoded_labels = np.array(encoded_labels)
+    # Make boolean nparray from supervised samples mask. 
+    samples_sup = np.array(samples_sup, dtype=bool)
+
+    # Shuffle dataset.
+    idx = np.arange(samples.shape[0])
+    rng.shuffle(idx)
+    samples, encoded_labels, samples_sup = samples[idx], encoded_labels[idx], samples_sup[idx]
+
+    # Split dataset.
+    split = min(int(samples.shape[0] * args.train_split), samples.shape[0])
+    X_train, y_train, sup_train = samples[:split], encoded_labels[:split], samples_sup[:split]
+    X_val, y_val = samples[split:], encoded_labels[split:]
+
+    # Balance training set.
+    X_train_bal, y_train_bal, sup_train_bal = balance_classes(X_train, y_train, sup_train)
+
+    logger.debug(
+        f'Shape summary...'
+        f'  X_train_bal: {X_train_bal.shape}'
+        f'  y_train_bal: {y_train_bal.shape}'
+        f'  sup_train_bal: {sup_train_bal.shape}'
+        f'  X_val: {X_val.shape}'
+        f'  y_val: {y_val.shape}'
+    )
+
+    # If validation set is empty use pre-balanced training set instead. 
+    val_set = (X_val, y_val) if X_val.size > 0 else (X_train, y_train)
+
+    train_set = X_train_bal, y_train_bal, sup_train_bal
+
+    return train_set, val_set
+
+def calc_class_stats(labels):
+    """ Calculate number of classes and weighting.
+
+    Args:
+        labels (list of strings): Radar sample labels.
+
+    Returns:
+        n_classes (int): Number of classes in data set.
+        w_classes (dict): Class weight dict.
+    """
+    counter = collections.Counter(labels)
+    max_v = float(max(counter.values()))
+    w_classes = {cls: max_v / v for cls, v in counter.items()}
+    logger.info(f'class weights: {w_classes}')
+    n_classes = len(list(counter))
+    logger.info(f'number of classes: {n_classes}')
+    return n_classes, w_classes
+
+def instantiate_models(n_classes):
+    """ Instantiate models. 
+
+    Args:
+        n_classes (int): Number of classes in data set.
+
+    Returns:
+        d_model (keras object): Discriminator.
+        c_model (keras object): Classifier.
+        g_model (keras object): Generator.
+        gan_model (keras object): GAN model. 
+    """
+    # Create classifier and discriminator.
+    shape = RESCALE + (1,)
+    d_model, c_model = define_discriminator(
+        xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
+    d_model.summary(print_fn=logger.debug)
+    c_model.summary(print_fn=logger.debug)
+    # Create generator.
+    g_model = define_generator()
+    g_model.summary(print_fn=logger.debug)
+    # Create gan.
+    gan_model = define_gan(g_model, d_model)
+    gan_model.summary(print_fn=logger.debug)
+    return d_model, c_model, g_model, gan_model
+
+def main(args):
+    """Main program.
+
+    Args:
+        args (parser object): command line arguments.
+
+    """
+    # Log to both stdout and a file. 
+    logging.basicConfig(
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        level=logging.DEBUG if args.logging_level == 'debug' else logging.INFO,
+        handlers=[
+            logging.FileHandler(args.log_file, mode='w'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    # Get samples, labels and supervised training mask. 
+    samples, labels, samples_sup = get_datasets(args)
+    # Filter and alias samples and labels. 
+    filtered_samples, filtered_labels = filter_data(args, samples, labels)
+    # Log class statistics and get number of classes and (optionally) class weights. 
+    n_classes, _ = calc_class_stats(filtered_labels)
+    # Prepare data for training. 
+    train_set, val_set = preprocess_data(
+        args, filtered_samples, filtered_labels, samples_sup)
+    # Create the models. 
+    d_model, c_model, g_model, gan_model = instantiate_models(n_classes)
+    # Actual training. 
+    train(g_model, d_model, c_model, gan_model, train_set,
+          val_set=val_set, n_classes=n_classes)
 
 if __name__ == '__main__':
     # Log file name.
@@ -520,9 +748,10 @@ if __name__ == '__main__':
         default=os.path.join(common.PRJ_DIR, default_log_file)
     )
     parser.set_defaults(online_learn=False)
-    parser.set_defaults(use_svc=False)
     args = parser.parse_args()
 
+    main(args)
+    """
     logging.basicConfig(
         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
         level=logging.DEBUG if args.logging_level == 'debug' else logging.INFO,
@@ -549,12 +778,10 @@ if __name__ == '__main__':
                            if dataset in args.datasets_as_sup or not args.datasets_as_sup
                            else [False] * len(data_pickle['samples']))
 
-    # Use alised class names.
-    CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
-    #CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'}
+    # Use aliased class names.
     keys = CLASS_ALIAS.keys()
     if set(labels) - set(keys):
-        print('Using alised class names.')
+        print('Using aliased class names.')
         labels = list(
             map(
                 lambda x: CLASS_ALIAS[x] if x in list(keys) else x,
@@ -650,3 +877,4 @@ if __name__ == '__main__':
     # Train.
     train(g_model, d_model, c_model, gan_model, (X_train_bal, y_train_bal, sup_train_bal),
          val_set=val_set, n_classes=n_classes, w_classes=None)
+    """

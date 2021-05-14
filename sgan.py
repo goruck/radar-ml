@@ -129,7 +129,12 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
 
     conv = tf.keras.layers.Flatten()(conv)
 
-    conv = tf.keras.layers.Dense(128, kernel_initializer=init)(conv)
+    conv = tf.keras.layers.Dense(64, kernel_initializer=init)(conv)
+    conv = tf.keras.layers.BatchNormalization()(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
+    conv = tf.keras.layers.Dropout(0.5)(conv)
+
+    conv = tf.keras.layers.Dense(64, kernel_initializer=init)(conv)
     conv = tf.keras.layers.BatchNormalization()(conv)
     conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
     conv = tf.keras.layers.Dropout(0.5)(conv)
@@ -328,12 +333,10 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
 # smoothing class=1 to [0.7, 1.2]
 def smooth_positive_labels(y):
     return y - 0.3 + (np.random.random(y.shape) * 0.5)
-    # return y
 
 # smoothing class=0 to [0.0, 0.3]
 def smooth_negative_labels(y):
     return y + np.random.random(y.shape) * 0.3
-    # return y
 
 # select a supervised subset of the dataset, ensures classes are balanced
 def select_supervised_samples(dataset, n_samples=150, n_classes=3):
@@ -397,7 +400,7 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     out = []
     for s in samples:
         # Convert numpy ndarrays to PIL Image objects.
-        # Note : Using PIL because its really fast
+        # Note: Using PIL because its really fast.
         xz, yz, xy = Image.fromarray(s[0]), Image.fromarray(s[1]), Image.fromarray(s[2])
         # Scale PIL Images, convert back to numpy ndarrys.
         xz = np.asarray(xz.resize((176, 22), resample=Image.BICUBIC))

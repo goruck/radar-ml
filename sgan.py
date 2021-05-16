@@ -1,7 +1,14 @@
 """
-radar-ml using SGAN.
+Train a Semisupervised GAN on radar data.
 
-Copyright (c) 2020~2021 Lindo St. Angel
+Example usage:
+    $ python3 ./sgan.py \
+        --datasets datasets/radar_samples_25Nov20.pickle datasets/radar_samples.pickle \
+        --datasets_as_sup datasets/radar_samples_25Nov20.pickle
+
+Inspired and based on "Generative Adversarial Networks with Python" by Jason Brownlee.
+
+Copyright (c) 2021 Lindo St. Angel
 """
 
 import os
@@ -27,8 +34,14 @@ logger = logging.getLogger(__name__)
 RANDOM_SEED = 1234
 rng = np.random.default_rng(RANDOM_SEED)
 
-# Projection rescaling factor.
+# Radar projection rescaling factor.
 RESCALE = (128, 128)
+
+# Original shapes (cols, rows) of radar projections.
+# todo: change so that the code determines this from the data set.
+XZ_SIZE = (176, 22)
+YZ_SIZE = (176, 31)
+XY_SIZE = (31, 22)
 
 # Class aliases.
 # Some data sets used pet names instead of pet type so this makes them consistent.
@@ -37,10 +50,10 @@ CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
 #CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'}
 
 # Uncomment line below to print all elements of numpy arrays.
-np.set_printoptions(threshold=sys.maxsize)
+#np.set_printoptions(threshold=sys.maxsize)
 
-# define the standalone generator model
 def create_g_conv_layers(input, init):
+    """ Creates generator convolutional layers. """
     n_nodes = 8 * 8 * 128
     conv = tf.keras.layers.Dense(n_nodes, kernel_initializer=init)(input)
     conv = tf.keras.layers.ReLU()(conv)
@@ -70,32 +83,54 @@ def create_g_conv_layers(input, init):
     conv = tf.keras.layers.BatchNormalization()(conv)
     conv = tf.keras.layers.ReLU()(conv)
 
-    return tf.keras.layers.Conv2D(1, (7, 7), activation='tanh', padding='same', kernel_initializer=init)(conv)
+    # Single filter conv with tanh activation to make data fall in [-1, 1]
+    conv = tf.keras.layers.Conv2D(1, (7, 7), activation='tanh', padding='same',
+        kernel_initializer=init)(conv)
+
+    return conv
 
 def define_generator(latent_dim=100):
+    """ Define the standalone generator model.
+
+    Args:
+        latent_dim (int): Latent space dimension,
+        e.g. a 100-element vector of Gaussian random numbers.
+
+    Returns:
+        model (Keras object): Generator model.
+
+    Note:
+        Model output is a list of xz, yz, xy generated radar projections
+        each with shape (n_batch, 128, 128, 1) with values in [-1,1]
+    """
     init = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
+
     input = tf.keras.layers.Input(shape=(latent_dim,))
 
-    xz_model = create_g_conv_layers(input, init)
-    yz_model = create_g_conv_layers(input, init)
-    xy_model = create_g_conv_layers(input, init)
+    # Create convolutional layers per projection.
+    xz_conv = create_g_conv_layers(input, init)
+    yz_conv = create_g_conv_layers(input, init)
+    xy_conv = create_g_conv_layers(input, init)
 
-    # define model
-    return tf.keras.Model(inputs=input, outputs=[xz_model, yz_model, xy_model], name='generator')
+    # Define model.
+    out = [xz_conv, yz_conv, xy_conv]
+    model = tf.keras.Model(inputs=input, outputs=out, name='generator')
 
-### Functional D/C model ####
-# custom activation function
+    return model
+
 def custom_activation(output):
+    """Custom activation function for discriminator."""
     logexpsum = tf.keras.backend.sum(
         tf.keras.backend.exp(output), axis=-1, keepdims=True)
     return logexpsum / (logexpsum + 1.0)
 
-def create_d_conv_layers(input_scan, init):
-    input_shape = input_scan.shape[1:]
+def create_d_conv_layers(input, init):
+    """Creates discriminator conv layers."""
+    input_shape = input.shape[1:]
 
     # Downsample to 64x64.
     conv = tf.keras.layers.Conv2D(128, (3, 3), strides=(
-        2, 2), padding='same', input_shape=input_shape, kernel_initializer=init)(input_scan)
+        2, 2), padding='same', input_shape=input_shape, kernel_initializer=init)(input)
     conv = tf.keras.layers.BatchNormalization()(conv)
     conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
 
@@ -113,11 +148,23 @@ def create_d_conv_layers(input_scan, init):
 
     return conv
 
-# define the standalone supervised and unsupervised discriminator models
-# Input ordering is xz, yz, xy.
 def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
+    """Define supervised and unsupervised discriminator models.
+
+    Args:
+        xz_shape, yz_shape, xy_shape (tuple): Shapes of radar projections.
+        n_classes (int): Number of classes for supervised disc model.
+
+    Returns:
+        d_model (Keras object): Unsupervised discriminator model.
+        c_model (Keras object): Supervised discriminator model.
+
+    Note:
+        Input ordering is xz, yz, xy.
+    """
     init = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
 
+    # Create conv layers for each radar projection. 
     xz_input = tf.keras.layers.Input(shape=xz_shape)
     xz_model = create_d_conv_layers(xz_input, init)
     yz_input = tf.keras.layers.Input(shape=yz_shape)
@@ -125,57 +172,62 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     xy_input = tf.keras.layers.Input(shape=xy_shape)
     xy_model = create_d_conv_layers(xy_input, init)
 
+    # Concat convolutions. 
     conv = tf.keras.layers.concatenate([xz_model, yz_model, xy_model])
 
-    conv = tf.keras.layers.Flatten()(conv)
+    # Flatten to get feature vector. 
+    fv = tf.keras.layers.Flatten()(conv)
 
-    conv = tf.keras.layers.Dense(64, kernel_initializer=init)(conv)
-    conv = tf.keras.layers.BatchNormalization()(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-    conv = tf.keras.layers.Dropout(0.5)(conv)
+    # Pass feature vector to dense layers.
+    dense = tf.keras.layers.Dense(64, kernel_initializer=init)(fv)
+    dense = tf.keras.layers.BatchNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
+    dense = tf.keras.layers.Dropout(0.5)(dense)
 
-    conv = tf.keras.layers.Dense(64, kernel_initializer=init)(conv)
-    conv = tf.keras.layers.BatchNormalization()(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-    conv = tf.keras.layers.Dropout(0.5)(conv)
+    dense = tf.keras.layers.Dense(64, kernel_initializer=init)(dense)
+    dense = tf.keras.layers.BatchNormalization()(dense)
+    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
+    dense = tf.keras.layers.Dropout(0.5)(dense)
 
-    conv = tf.keras.layers.Dense(n_classes, kernel_initializer=init)(conv)
+    # Classifier. 
+    cls = tf.keras.layers.Dense(n_classes, kernel_initializer=init)(dense)
 
-    c_out_layer = tf.keras.layers.Activation('softmax')(conv)
-
+    # Supervised output.
+    c_out_layer = tf.keras.layers.Activation('softmax')(cls)
+    # Define and compile supervised discriminator model. 
     c_model = tf.keras.Model(inputs=[xz_input, yz_input, xy_input],
                              outputs=[c_out_layer], name='classifier')
     c_model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
         lr=0.0002, beta_1=0.5), metrics=['accuracy'])
 
-    # unsupervised output
-    d_out_layer = tf.keras.layers.Lambda(custom_activation)(conv)
-    # define and compile unsupervised discriminator model
+    # Unsupervised output.
+    d_out_layer = tf.keras.layers.Lambda(custom_activation)(cls)
+    # Define and compile unsupervised discriminator model.
     d_model = tf.keras.Model(inputs=[xz_input, yz_input, xy_input], outputs=[
         d_out_layer], name='discriminator')
     d_model.compile(loss='binary_crossentropy',
-                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5), metrics=['accuracy'])
+                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5))
 
     return d_model, c_model
 
-# define the combined generator and discriminator model, for updating the generator
 def define_gan(g_model, d_model):
-    # make weights in the discriminator not trainable
+    """Define combined generator and discriminator model for updating the generator."""
+    # Make weights in the discriminator not trainable.
     for layer in d_model.layers:
         if not isinstance(layer, tf.keras.layers.BatchNormalization):
             layer.trainable = False
-    # connect image output from generator as input to discriminator
+    # Connect image output from generator as input to discriminator.
     gan_output = d_model(g_model.output)
-    # define gan model as taking noise and outputting a classification
-    model = tf.keras.Model(inputs=g_model.input,
-                           outputs=gan_output, name='gan')
-    # compile model
+    # Define gan model as taking noise and outputting a classification.
+    model = tf.keras.Model(inputs=g_model.input, outputs=gan_output, name='gan')
+    # Compile model.
     opt = tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5)
-    model.compile(loss='binary_crossentropy',
-                           optimizer=opt, metrics=['accuracy'])
+    model.compile(loss='binary_crossentropy', optimizer=opt)
+    
     return model
 
 def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
+    """Augment a tuple of radar projections."""
     def clamp(p):
         p[p > 1.0] = 1.0
         p[p < -1.0] = -1.0
@@ -330,16 +382,16 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
 
     return data_balanced, labels_balanced, samples_sup_balanced
 
-# smoothing class=1 to [0.7, 1.2]
 def smooth_positive_labels(y):
+    """Smooths class=1 to [0.7, 1.2]"""
     return y - 0.3 + (np.random.random(y.shape) * 0.5)
 
-# smoothing class=0 to [0.0, 0.3]
 def smooth_negative_labels(y):
+    """Smooths class=0 to [0.0, 0.3]"""
     return y + np.random.random(y.shape) * 0.3
 
-# select a supervised subset of the dataset, ensures classes are balanced
 def select_supervised_samples(dataset, n_samples=150, n_classes=3):
+    """Select a supervised subset of the dataset, ensures classes are balanced."""
     X, y, sup = dataset
     X_list, y_list = [], []
     n_per_class = int(n_samples / n_classes)
@@ -356,8 +408,8 @@ def select_supervised_samples(dataset, n_samples=150, n_classes=3):
         [y_list.append(i) for j in ix]
     return np.asarray(X_list), np.asarray(y_list)
 
-# select real samples
 def generate_real_samples(dataset, n_samples):
+    """Select real smaples."""
     # split into images and labels
     images, labels, *_ = dataset
     # choose random instances
@@ -369,13 +421,13 @@ def generate_real_samples(dataset, n_samples):
     y = smooth_positive_labels(y)
     return [X, labels], y
 
-# generate points in latent space as input for the generator
 def generate_latent_points(latent_dim, n_samples):
+    """Generate points in latent space as input for the generator."""
     # generate points in the latent space
     return rng.standard_normal(size=(n_samples, latent_dim))
 
-# use the generator to generate n fake examples, with class labels
 def generate_fake_samples(generator, latent_dim, n_samples):
+    """Use the generator to generate n fake examples, with class labels."""
     # generate points in latent space
     input = generate_latent_points(latent_dim, n_samples)
     # predict outputs
@@ -386,7 +438,7 @@ def generate_fake_samples(generator, latent_dim, n_samples):
     return images, y
 
 def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples=100):
-    """ Generate samples, saving as tuple of projections, and save models. """
+    """Generate samples, saving as tuple of projections, and save models."""
     # Prepare fake examples.
     # The Generator returns 4D tensors with the last axis of length 1.
     # i.e., (n_samples, rows, cols, 1)
@@ -403,85 +455,69 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
         # Note: Using PIL because its really fast.
         xz, yz, xy = Image.fromarray(s[0]), Image.fromarray(s[1]), Image.fromarray(s[2])
         # Scale PIL Images, convert back to numpy ndarrys.
-        xz = np.asarray(xz.resize((176, 22), resample=Image.BICUBIC))
-        yz = np.asarray(yz.resize((176, 31), resample=Image.BICUBIC))
-        xy = np.asarray(xy.resize((31, 22), resample=Image.BICUBIC))
+        xz = np.asarray(xz.resize(XZ_SIZE, resample=Image.BICUBIC))
+        yz = np.asarray(yz.resize(YZ_SIZE, resample=Image.BICUBIC))
+        xy = np.asarray(xy.resize(XY_SIZE, resample=Image.BICUBIC))
         # Append tuple of projections to output. 
         out.append((xz, yz, xy))
     # Create data set.
     data = {'samples': out, 'labels': ['generated_data'] * n_samples}
     # Write serialized data set to disk.
-    filename1 = f'generated_data_{step+1:04d}.pickle'
+    filename1 = os.path.join(args.results_dir, f'generated_data_{step+1:04d}.pickle')
     with open(filename1, 'wb') as fp:
         pickle.dump(data, fp)
-
-    """
-    # plot images
-    for i in range(100):
-        # define subplot
-        pyplot.subplot(10, 10, i + 1)
-        # turn off axis
-        pyplot.axis('off')
-        # plot raw pixel data
-        pyplot.imshow(X[0][i, :, :, 0], cmap='gray_r')
-    # save plot to file
-    filename1 = 'generated_plot_%04d.png' % (step+1)
-    pyplot.savefig(filename1)
-    pyplot.close()
-    """
-
-    # evaluate the classifier model
+    # Evaluate the classifier model.
     X, y, *_ = dataset
     _, acc = c_model.evaluate([X[..., 0], X[..., 1], X[..., 2]], y)
     logger.info(f'Classifier accuracy at step {step+1}: {acc*100:.2f}%')
-    # reset metrics to avoid accumulation in next model operation
+    # Reset metrics to avoid accumulation in next model operation.
     c_model.reset_metrics()
-    # save the generator model
-    filename2 = 'g_model_%04d.h5' % (step+1)
-    #g_model.save(filename2)
-    # save the classifier model
-    filename3 = 'c_model_%04d.h5' % (step+1)
-    #c_model.save(filename3)
-    #logger.info('Saved: %s, %s, and %s' % (filename1, filename2, filename3))
+    # Save the generator model.
+    filename2 = os.path.join(args.results_dir, 'g_model_%04d.h5' % (step+1))
+    g_model.save(filename2)
+    # Save the classifier model.
+    filename3 = os.path.join(args.results_dir, 'c_model_%04d.h5' % (step+1))
+    c_model.save(filename3)
+    logger.info('Saved: %s, %s, and %s' % (filename1, filename2, filename3))
 
-# train the generator and discriminator
 def train(g_model, d_model, c_model, gan_model,
     train_set, val_set, n_classes, w_classes=None,
-    latent_dim=100, n_epochs=15, n_batch=64,
+    latent_dim=100, n_epochs=15, n_batch=32,
     ):
-    # select supervised dataset
+    """Train the generator and discriminator."""
+    # Select supervised dataset.
     X_sup, y_sup = select_supervised_samples(train_set, n_classes=n_classes)
-    # calculate the number of batches per training epoch
+    # Calculate the number of batches per training epoch.
     bat_per_epo = int(train_set[0].shape[0] / n_batch)
-    # calculate the number of training iterations
+    # Calculate the number of training iterations.
     n_steps = bat_per_epo * n_epochs
-    # calculate the size of half a batch of samples
+    # Calculate the size of half a batch of samples.
     half_batch = int(n_batch / 2)
     logger.info(f'Starting training loop.')
     logger.info('n_epochs=%d, n_batch=%d, 1/2=%d, b/e=%d, steps=%d' %
                 (n_epochs, n_batch, half_batch, bat_per_epo, n_steps))
-    # manually enumerate epochs
+    # Manually enumerate epochs.
     for i in range(n_steps):
-        # update supervised discriminator (c)
+        # Update supervised discriminator (c).
         [Xsup_real, ysup_real], _ = generate_real_samples(
             [X_sup, y_sup], half_batch)
         c_loss, c_acc = c_model.train_on_batch(
             [Xsup_real[..., 0], Xsup_real[..., 1], Xsup_real[..., 2]], ysup_real)
-        # update unsupervised discriminator (d)
+        # Update unsupervised discriminator (d).
         [X_real, _], y_real = generate_real_samples(train_set, half_batch)
-        dr_loss, dr_acc = d_model.train_on_batch(
+        dr_loss = d_model.train_on_batch(
             [X_real[..., 0], X_real[..., 1], X_real[..., 2]], y_real, class_weight=w_classes)
         X_fake, y_fake = generate_fake_samples(g_model, latent_dim, half_batch)
-        df_loss, df_acc = d_model.train_on_batch(X_fake, y_fake)
-        # update generator (g)
+        df_loss = d_model.train_on_batch(X_fake, y_fake)
+        # Update generator (g).
         X_gan, y_gan = generate_latent_points(
             latent_dim, n_batch), np.ones((n_batch, 1))
         y_gan = smooth_positive_labels(y_gan)
-        g_loss, g_acc = gan_model.train_on_batch(X_gan, y_gan)
-        # summarize loss and acc on this batch
-        logger.debug('[loss, acc] at step %d: c[%.3f,%.0f], d_r[%.3f,%.0f], d_f[%.3f,%.0f], g[%.3f,%.0f]' %
-                     (i+1, c_loss, c_acc*100, dr_loss, dr_acc*100, df_loss, df_acc*100, g_loss, g_acc*100))
-        # evaluate the model performance every so often
+        g_loss = gan_model.train_on_batch(X_gan, y_gan)
+        # Summarize loss and acc on this batch.
+        logger.info('Training results at step %d: c[%.3f,%.0f], d_r[%.3f], d_f[%.3f], g[%.3f]' %
+                    (i+1, c_loss, c_acc*100, dr_loss, df_loss, g_loss))
+        # Evaluate the model performance every so often.
         if (i+1) % (bat_per_epo * 1) == 0:
             summarize_performance(i, g_model, c_model, latent_dim, val_set)
 
@@ -499,7 +535,6 @@ def get_datasets(args):
     Note:
         Causes program to exit if data set not found on filesystem. 
     """
-
     samples, labels, samples_sup = [], [], []
 
     for dataset in args.datasets:
@@ -520,7 +555,7 @@ def get_datasets(args):
     return samples, labels, samples_sup
 
 def filter_data(args, samples, labels):
-    """ Filter desired classes and apply aliases. 
+    """Filter desired classes and apply aliases. 
 
     Args:
         args (parser object): command line arguments.
@@ -556,13 +591,14 @@ def filter_data(args, samples, labels):
     return filtered_samples, filtered_labels
 
 def preprocess_data(args, data, labels, samples_sup):
-    """ Preprocess data set for use in training the models. 
+    """Preprocess data set for use in training the models. 
 
     Args:
         args (parser object): command line arguments.
         data (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
         labels (list of strings): Radar sample labels.
         samples_sup: (list of bool): Mask representing radar samples to use for supervised learning.
+        augment (bool): Flag indicating radar projections will be augmented.
 
     Returns:
         train_set (tuple of list of np.array): Training set and mask. 
@@ -579,6 +615,10 @@ def preprocess_data(args, data, labels, samples_sup):
         (p - common.RADAR_MAX / 2.) / (common.RADAR_MAX / 2.) for p in s
     ) for s in data
     ]
+
+    if args.augment:
+        logger.info('Augmenting data.')
+        scaled_data = [augment_data(d) for d in scaled_data]
 
     # Encode the labels.
     logger.info('Encoding labels.')
@@ -614,9 +654,6 @@ def preprocess_data(args, data, labels, samples_sup):
         XZ.append(np.asarray(xz.resize(RESCALE, resample=Image.BICUBIC)))
         YZ.append(np.asarray(yz.resize(RESCALE, resample=Image.BICUBIC)))
         XY.append(np.asarray(xy.resize(RESCALE, resample=Image.BICUBIC)))
-        #XZ.append(np.resize(d[0], RESCALE))
-        #YZ.append(np.resize(d[1], RESCALE))
-        #XY.append(np.resize(d[2], RESCALE))
     # Make each array 3D so that they can be concatenated.
     XZ, YZ, XY = np.array(XZ), np.array(YZ), np.array(XY)
     XZ = XZ[..., np.newaxis]
@@ -665,7 +702,7 @@ def preprocess_data(args, data, labels, samples_sup):
     return train_set, val_set, n_classes, w_classes
 
 def instantiate_models(n_classes):
-    """ Instantiate models. 
+    """Instantiate models. 
 
     Args:
         n_classes (int): Number of classes in data set.
@@ -698,11 +735,12 @@ def main(args):
 
     """
     # Log to both stdout and a file.
+    log_file = os.path.join(args.results_dir, 'train.log')
     logging.basicConfig(
         format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
         level=logging.DEBUG if args.logging_level == 'debug' else logging.INFO,
         handlers=[
-            logging.FileHandler(args.log_file, mode='w'),
+            logging.FileHandler(log_file, mode='w'),
             logging.StreamHandler(sys.stdout)
         ]
     )
@@ -720,20 +758,14 @@ def main(args):
           val_set=val_set, n_classes=n_classes)
 
 if __name__ == '__main__':
-    # Log file name.
-    default_log_file = 'train-results/train.log'
+    # Director to save training results.
+    default_results_dir = 'train-results/sgan'
     # Training datasets.
     default_datasets = []
     # Supervised datasets.
     default_datasets_as_sup = []
-    # Label encoder name.
-    default_label_encoder = 'train-results/radar_labels.pickle'
-    # Radar 2-D projections to use for predictions (xy, xz, yz).
-    default_proj_mask = [True, True, True]
     # Labels to use for training.
     default_desired_labels = ['person', 'dog', 'cat', 'pet']
-    # Each epoch augments entire data set (zero disables).
-    default_epochs = 0
     # Fraction of data set used for training, must be <=1.0.
     default_train_split = 1.0
 
@@ -754,16 +786,6 @@ if __name__ == '__main__':
         default=default_desired_labels
     )
     parser.add_argument(
-        '--proj_mask', nargs='+', type=bool,
-        help='projection mask (xy, xz, yz)',
-        default=default_proj_mask
-    )
-    parser.add_argument(
-        '--label_encoder', type=str,
-        help='path of output label encoder',
-        default=os.path.join(common.PRJ_DIR, default_label_encoder)
-    )
-    parser.add_argument(
         '--logging_level', type=str,
         help='logging level, "info" or "debug"',
         default='info'
@@ -774,11 +796,15 @@ if __name__ == '__main__':
         default=default_train_split
     )
     parser.add_argument(
-        '--log_file', type=str,
-        help='path of output svm model name',
-        default=os.path.join(common.PRJ_DIR, default_log_file)
+        '--results_dir', type=str,
+        help='training results path',
+        default=os.path.join(common.PRJ_DIR, default_results_dir)
     )
-    parser.set_defaults(online_learn=False)
+    parser.add_argument(
+        '--augment', action='store_true',
+        help='if true data set will be augmented',
+    )
+    parser.set_defaults(augment=False)
     args = parser.parse_args()
 
     main(args)

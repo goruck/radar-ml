@@ -1,7 +1,11 @@
 """
-radar-ml using GAN.
+Train a deep neural network based classifier on radar data.
 
-Copyright (c) 2020 Lindo St. Angel
+Example usage:
+    $ python3 ./dnn.py \
+        --datasets datasets/radar_samples_25Nov20.pickle datasets/radar_samples.pickle
+
+Copyright (c) 2021 Lindo St. Angel
 """
 
 import os

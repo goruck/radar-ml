@@ -1,12 +1,14 @@
 """
-Train a Semisupervised GAN on radar data.
+Train a Semi-Supervised GAN on radar data.
 
 Example usage:
     $ python3 ./sgan.py \
         --datasets datasets/radar_samples_25Nov20.pickle datasets/radar_samples.pickle \
         --datasets_as_sup datasets/radar_samples_25Nov20.pickle
 
-Inspired and based on "Generative Adversarial Networks with Python" by Jason Brownlee.
+Note:
+    Partially based on "Generative Adversarial Networks with Python" by Jason Brownlee.
+    See https://machinelearningmastery.com/generative_adversarial_networks/.
 
 Copyright (c) 2021 Lindo St. Angel
 """
@@ -22,7 +24,6 @@ import pickle
 
 import numpy as np
 from scipy import ndimage
-import matplotlib.pyplot as plt
 from sklearn import preprocessing, utils
 import tensorflow as tf
 from PIL import Image
@@ -50,10 +51,11 @@ CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
 #CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'}
 
 # Uncomment line below to print all elements of numpy arrays.
-#np.set_printoptions(threshold=sys.maxsize)
+# np.set_printoptions(threshold=sys.maxsize)
+
 
 def create_g_conv_layers(input, init):
-    """ Creates generator convolutional layers. """
+    """Creates generator convolutional layers."""
     n_nodes = 8 * 8 * 128
     conv = tf.keras.layers.Dense(n_nodes, kernel_initializer=init)(input)
     conv = tf.keras.layers.ReLU()(conv)
@@ -85,12 +87,13 @@ def create_g_conv_layers(input, init):
 
     # Single filter conv with tanh activation to make data fall in [-1, 1]
     conv = tf.keras.layers.Conv2D(1, (7, 7), activation='tanh', padding='same',
-        kernel_initializer=init)(conv)
+                                  kernel_initializer=init)(conv)
 
     return conv
 
+
 def define_generator(latent_dim=100):
-    """ Define the standalone generator model.
+    """Define the standalone generator model.
 
     Args:
         latent_dim (int): Latent space dimension,
@@ -118,11 +121,13 @@ def define_generator(latent_dim=100):
 
     return model
 
+
 def custom_activation(output):
     """Custom activation function for discriminator."""
     logexpsum = tf.keras.backend.sum(
         tf.keras.backend.exp(output), axis=-1, keepdims=True)
     return logexpsum / (logexpsum + 1.0)
+
 
 def create_d_conv_layers(input, init):
     """Creates discriminator conv layers."""
@@ -148,6 +153,7 @@ def create_d_conv_layers(input, init):
 
     return conv
 
+
 def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     """Define supervised and unsupervised discriminator models.
 
@@ -164,7 +170,7 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     """
     init = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.02)
 
-    # Create conv layers for each radar projection. 
+    # Create conv layers for each radar projection.
     xz_input = tf.keras.layers.Input(shape=xz_shape)
     xz_model = create_d_conv_layers(xz_input, init)
     yz_input = tf.keras.layers.Input(shape=yz_shape)
@@ -172,10 +178,10 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     xy_input = tf.keras.layers.Input(shape=xy_shape)
     xy_model = create_d_conv_layers(xy_input, init)
 
-    # Concat convolutions. 
+    # Concat convolutions.
     conv = tf.keras.layers.concatenate([xz_model, yz_model, xy_model])
 
-    # Flatten to get feature vector. 
+    # Flatten to get feature vector.
     fv = tf.keras.layers.Flatten()(conv)
 
     # Pass feature vector to dense layers.
@@ -189,12 +195,12 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
     dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
     dense = tf.keras.layers.Dropout(0.5)(dense)
 
-    # Classifier. 
+    # Classifier.
     cls = tf.keras.layers.Dense(n_classes, kernel_initializer=init)(dense)
 
     # Supervised output.
     c_out_layer = tf.keras.layers.Activation('softmax')(cls)
-    # Define and compile supervised discriminator model. 
+    # Define and compile supervised discriminator model.
     c_model = tf.keras.Model(inputs=[xz_input, yz_input, xy_input],
                              outputs=[c_out_layer], name='classifier')
     c_model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
@@ -210,6 +216,7 @@ def define_discriminator(xz_shape, yz_shape, xy_shape, n_classes):
 
     return d_model, c_model
 
+
 def define_gan(g_model, d_model):
     """Define combined generator and discriminator model for updating the generator."""
     # Make weights in the discriminator not trainable.
@@ -219,12 +226,14 @@ def define_gan(g_model, d_model):
     # Connect image output from generator as input to discriminator.
     gan_output = d_model(g_model.output)
     # Define gan model as taking noise and outputting a classification.
-    model = tf.keras.Model(inputs=g_model.input, outputs=gan_output, name='gan')
+    model = tf.keras.Model(inputs=g_model.input,
+                           outputs=gan_output, name='gan')
     # Compile model.
     opt = tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5)
     model.compile(loss='binary_crossentropy', optimizer=opt)
-    
+
     return model
+
 
 def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
     """Augment a tuple of radar projections."""
@@ -316,6 +325,7 @@ def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
 
     return x
 
+
 def balance_classes(data, labels, samples_sup, shuffle=True):
     """Balance classess."""
     # Most common classes and their counts from the most common to the least.
@@ -382,13 +392,16 @@ def balance_classes(data, labels, samples_sup, shuffle=True):
 
     return data_balanced, labels_balanced, samples_sup_balanced
 
+
 def smooth_positive_labels(y):
     """Smooths class=1 to [0.7, 1.2]"""
     return y - 0.3 + (np.random.random(y.shape) * 0.5)
 
+
 def smooth_negative_labels(y):
     """Smooths class=0 to [0.0, 0.3]"""
     return y + np.random.random(y.shape) * 0.3
+
 
 def select_supervised_samples(dataset, n_samples=150, n_classes=3):
     """Select a supervised subset of the dataset, ensures classes are balanced."""
@@ -408,6 +421,7 @@ def select_supervised_samples(dataset, n_samples=150, n_classes=3):
         [y_list.append(i) for j in ix]
     return np.asarray(X_list), np.asarray(y_list)
 
+
 def generate_real_samples(dataset, n_samples):
     """Select real smaples."""
     # split into images and labels
@@ -421,10 +435,12 @@ def generate_real_samples(dataset, n_samples):
     y = smooth_positive_labels(y)
     return [X, labels], y
 
+
 def generate_latent_points(latent_dim, n_samples):
     """Generate points in latent space as input for the generator."""
     # generate points in the latent space
     return rng.standard_normal(size=(n_samples, latent_dim))
+
 
 def generate_fake_samples(generator, latent_dim, n_samples):
     """Use the generator to generate n fake examples, with class labels."""
@@ -437,6 +453,7 @@ def generate_fake_samples(generator, latent_dim, n_samples):
     y = smooth_negative_labels(y)
     return images, y
 
+
 def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples=100):
     """Generate samples, saving as tuple of projections, and save models."""
     # Prepare fake examples.
@@ -447,23 +464,26 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     fake = [common.RADAR_MAX * (v + 1.) / 2. for v in fake]
     # Convert back to [(xz, yz, xy), ...] from [[XZ],[YZ],[XY]].
     XZ, YZ, XY = fake[0], fake[1], fake[2]
-    samples = [(XZ[i,:,:,0], YZ[i,:,:,0], XY[i,:,:,0]) for i in range(n_samples)]
+    samples = [(XZ[i, :, :, 0], YZ[i, :, :, 0], XY[i, :, :, 0])
+               for i in range(n_samples)]
     # Resize samples back to original dimensions.
     out = []
     for s in samples:
         # Convert numpy ndarrays to PIL Image objects.
         # Note: Using PIL because its really fast.
-        xz, yz, xy = Image.fromarray(s[0]), Image.fromarray(s[1]), Image.fromarray(s[2])
+        xz, yz, xy = Image.fromarray(s[0]), Image.fromarray(
+            s[1]), Image.fromarray(s[2])
         # Scale PIL Images, convert back to numpy ndarrys.
         xz = np.asarray(xz.resize(XZ_SIZE, resample=Image.BICUBIC))
         yz = np.asarray(yz.resize(YZ_SIZE, resample=Image.BICUBIC))
         xy = np.asarray(xy.resize(XY_SIZE, resample=Image.BICUBIC))
-        # Append tuple of projections to output. 
+        # Append tuple of projections to output.
         out.append((xz, yz, xy))
     # Create data set.
     data = {'samples': out, 'labels': ['generated_data'] * n_samples}
     # Write serialized data set to disk.
-    filename1 = os.path.join(args.results_dir, f'generated_data_{step+1:04d}.pickle')
+    filename1 = os.path.join(
+        args.results_dir, f'generated_data_{step+1:04d}.pickle')
     with open(filename1, 'wb') as fp:
         pickle.dump(data, fp)
     # Evaluate the classifier model.
@@ -480,10 +500,11 @@ def summarize_performance(step, g_model, c_model, latent_dim, dataset, n_samples
     c_model.save(filename3)
     logger.info('Saved: %s, %s, and %s' % (filename1, filename2, filename3))
 
+
 def train(g_model, d_model, c_model, gan_model,
-    train_set, val_set, n_classes, w_classes=None,
-    latent_dim=100, n_epochs=15, n_batch=32,
-    ):
+          train_set, val_set, n_classes, w_classes=None,
+          latent_dim=100, n_epochs=15, n_batch=32,
+          ):
     """Train the generator and discriminator."""
     # Select supervised dataset.
     X_sup, y_sup = select_supervised_samples(train_set, n_classes=n_classes)
@@ -515,11 +536,12 @@ def train(g_model, d_model, c_model, gan_model,
         y_gan = smooth_positive_labels(y_gan)
         g_loss = gan_model.train_on_batch(X_gan, y_gan)
         # Summarize loss and acc on this batch.
-        logger.info('Training results at step %d: c[%.3f,%.0f], d_r[%.3f], d_f[%.3f], g[%.3f]' %
+        logger.debug('Training results at step %d: c[%.3f,%.0f], d_r[%.3f], d_f[%.3f], g[%.3f]' %
                     (i+1, c_loss, c_acc*100, dr_loss, df_loss, g_loss))
         # Evaluate the model performance every so often.
         if (i+1) % (bat_per_epo * 1) == 0:
             summarize_performance(i, g_model, c_model, latent_dim, val_set)
+
 
 def get_datasets(args):
     """Gets and parses dataset(s) from command line.
@@ -553,6 +575,7 @@ def get_datasets(args):
                            else [False] * len(data_pickle['samples']))
 
     return samples, labels, samples_sup
+
 
 def filter_data(args, samples, labels):
     """Filter desired classes and apply aliases. 
@@ -589,6 +612,7 @@ def filter_data(args, samples, labels):
         samples) if aliased_labels[i] in args.desired_labels]
 
     return filtered_samples, filtered_labels
+
 
 def preprocess_data(args, data, labels, samples_sup):
     """Preprocess data set for use in training the models. 
@@ -642,15 +666,16 @@ def preprocess_data(args, data, labels, samples_sup):
     logger.info(f'Class weights: {w_classes}')
 
     # Convert radar samples from [(xz, yz, xy), ...] to [[XZ],[YZ],[XY]].
-    # i.e., from tuples of projections per sample to arrays of projections. 
-    # This is required for downstream processing. 
-    # Gather up projections in each sample. Resize to make same shape. 
+    # i.e., from tuples of projections per sample to arrays of projections.
+    # This is required for downstream processing.
+    # Gather up projections in each sample. Resize to make same shape.
     XZ, YZ, XY = [], [], []
     for d in scaled_data:
         # Convert numpy ndarrays to PIL Image objects.
-        # Note : Using PIL because its really fast. 
-        xz, yz, xy = Image.fromarray(d[0]), Image.fromarray(d[1]), Image.fromarray(d[2])
-        # Scale PIL Images, convert back to numpy ndarrys and add to lists. 
+        # Note : Using PIL because its really fast.
+        xz, yz, xy = Image.fromarray(d[0]), Image.fromarray(
+            d[1]), Image.fromarray(d[2])
+        # Scale PIL Images, convert back to numpy ndarrys and add to lists.
         XZ.append(np.asarray(xz.resize(RESCALE, resample=Image.BICUBIC)))
         YZ.append(np.asarray(yz.resize(RESCALE, resample=Image.BICUBIC)))
         XY.append(np.asarray(xy.resize(RESCALE, resample=Image.BICUBIC)))
@@ -701,6 +726,7 @@ def preprocess_data(args, data, labels, samples_sup):
 
     return train_set, val_set, n_classes, w_classes
 
+
 def instantiate_models(n_classes):
     """Instantiate models. 
 
@@ -726,6 +752,7 @@ def instantiate_models(n_classes):
     gan_model = define_gan(g_model, d_model)
     gan_model.summary(print_fn=logger.debug)
     return d_model, c_model, g_model, gan_model
+
 
 def main(args):
     """Main program.
@@ -757,8 +784,9 @@ def main(args):
     train(g_model, d_model, c_model, gan_model, train_set,
           val_set=val_set, n_classes=n_classes)
 
+
 if __name__ == '__main__':
-    # Director to save training results.
+    # Directory to save training results.
     default_results_dir = 'train-results/sgan'
     # Training datasets.
     default_datasets = []

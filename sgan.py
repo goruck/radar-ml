@@ -650,7 +650,7 @@ def preprocess_data(args, data, labels, samples_sup):
     encoded_labels = le.fit_transform(labels)
     class_names = list(le.classes_)
 
-    counter = collections.Counter(labels)
+    counter = collections.Counter(encoded_labels)
     max_v = float(max(counter.values()))
     w_classes = {cls: round(max_v / v, 2) for cls, v in counter.items()}
     n_classes = len(list(counter))

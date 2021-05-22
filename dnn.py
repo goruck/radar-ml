@@ -14,500 +14,102 @@ import pickle
 import argparse
 import logging
 import sys
-import functools
-import itertools
-import time
-import datetime
+import pickle
 
 import numpy as np
 from scipy import ndimage
-import matplotlib.pyplot as plt
-from sklearn import (model_selection, metrics, preprocessing, linear_model,
-                     svm, utils, calibration)
+from sklearn import preprocessing
 import tensorflow as tf
-from tensorflow.keras import layers
-from tensorflow.keras import backend
-from tensorflow.keras import Model
-from tensorflow.python.keras.utils.layer_utils import convert_dense_weights_data_format
-#from IPython import display
+from PIL import Image
 
 import common
+
+logger = logging.getLogger(__name__)
+
+RANDOM_SEED = 1234
+rng = np.random.default_rng(RANDOM_SEED)
+
+# Radar projection rescaling factor.
+RESCALE = (128, 128)
+
+# Class aliases.
+# Some data sets used pet names instead of pet type so this makes them consistent.
+CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
+# Make dogs and cats as pets.
+#CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'}
 
 # Uncomment line below to print all elements of numpy arrays.
 # np.set_printoptions(threshold=sys.maxsize)
 
-# Uncomment line below to disable TF warnings.
-#os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
-logger = logging.getLogger(__name__)
-
-# Define a seed so random operations are the same from run to run.
-RANDOM_SEED = 1234
-
-# Create the models.
-
-
-def make_generator_model():
-    model = tf.keras.Sequential()
-
-    model.add(layers.Dense(1*1*256, use_bias=False, input_shape=(100,)))
-    model.add(layers.BatchNormalization())
-    model.add(layers.ReLU())
-    # model.add(layers.LeakyReLU(alpha=0.2))
-    assert model.output_shape == (None, 256)
-
-    model.add(layers.Reshape((1, 256, 1)))
-    # Note: None is the batch size
-    assert model.output_shape == (None, 1, 256, 1)
-
-    # Input is a 4D tensor with shape: (batch_size, rows, cols, channels)
-    model.add(layers.Conv2DTranspose(
-        512, (5, 5), strides=(1, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 1, 512, 512)
-    model.add(layers.BatchNormalization())
-    model.add(layers.ReLU())
-    # model.add(layers.LeakyReLU(alpha=0.2))
-
-    model.add(layers.Conv2DTranspose(
-        256, (5, 5), strides=(1, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 1, 1024, 256)
-    model.add(layers.BatchNormalization())
-    model.add(layers.ReLU())
-    # model.add(layers.LeakyReLU(alpha=0.2))
-
-    model.add(layers.Conv2DTranspose(
-        128, (5, 5), strides=(1, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 1, 2048, 128)
-    model.add(layers.BatchNormalization())
-    model.add(layers.ReLU())
-    # model.add(layers.LeakyReLU(alpha=0.2))
-
-    model.add(layers.Conv2DTranspose(
-        64, (5, 5), strides=(1, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 1, 4096, 64)
-    model.add(layers.BatchNormalization())
-    model.add(layers.ReLU())
-    # model.add(layers.LeakyReLU(alpha=0.2))
-
-    model.add(layers.Conv2DTranspose(1, (5, 5), strides=(1, 2),
-              padding='same', use_bias=False, activation='tanh'))
-    assert model.output_shape == (None, 1, 8192, 1)
-
-    return model
-
-#generator = make_generator_model()
-# generator.summary()
-
-#noise = tf.random.normal([1, 100])
-#generated_image = generator(noise, training=False)
-
-#plt.imshow(generated_image[0, :, :, 0], cmap='gray')
-
-
-def make_discriminator_model():
-    model = tf.keras.Sequential()
-
-    model.add(layers.Conv2D(64, (5, 5), strides=(1, 4),
-              padding='same', input_shape=[1, 8192, 1]))
-    # model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.5))
-    assert model.output_shape == (None, 1, 2048, 64)
-
-    model.add(layers.Conv2D(128, (5, 5), strides=(1, 4), padding='same'))
-    # model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.5))
-    assert model.output_shape == (None, 1, 512, 128)
-
-    model.add(layers.Conv2D(256, (5, 5), strides=(1, 4), padding='same'))
-    # model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.5))
-    assert model.output_shape == (None, 1, 128, 256)
-
-    model.add(layers.Conv2D(512, (5, 5), strides=(1, 4), padding='same'))
-    # model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.5))
-    assert model.output_shape == (None, 1, 32, 512)
-
-    model.add(layers.Conv2D(1024, (5, 5), strides=(1, 2), padding='same'))
-    # model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.5))
-    assert model.output_shape == (None, 1, 16, 1024)
-
-    model.add(layers.Flatten())
-    model.add(layers.Dense(1))
-    assert model.output_shape == (None, 1)
-
-    return model
-
-#discriminator = make_discriminator_model()
-# discriminator.summary()
-#decision = discriminator(generated_image)
-# print(decision)
-
-### Functional D/C model ####
-# custom activation function
-
-
-def custom_activation(output):
-    logexpsum = backend.sum(backend.exp(output), axis=-1, keepdims=True)
-    return logexpsum / (logexpsum + 1.0)
 
 def create_conv_layers(input_scan):
+    """Creates convolutional layers."""
     input_shape = input_scan.shape[1:]
 
-    conv = layers.Conv2D(32, (4, 4), strides=(
+    conv = tf.keras.layers.Conv2D(32, (4, 4), strides=(
         2, 2), padding='same', input_shape=input_shape)(input_scan)
-    conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    #conv = layers.Dropout(0.2)(conv)
+    conv = tf.keras.layers.BatchNormalization()(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
 
-    conv = layers.Conv2D(64, (4, 4), strides=(2, 2), padding='same')(conv)
-    conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    #conv = layers.Dropout(0.2)(conv)
+    conv = tf.keras.layers.Conv2D(
+        64, (4, 4), strides=(2, 2), padding='same')(conv)
+    conv = tf.keras.layers.BatchNormalization()(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
 
-    conv = layers.Conv2D(128, (4, 4), strides=(2, 2), padding='same')(conv)
-    conv = layers.BatchNormalization()(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    #conv = layers.Dropout(0.2)(conv)
+    conv = tf.keras.layers.Conv2D(
+        128, (4, 4), strides=(2, 2), padding='same')(conv)
+    conv = tf.keras.layers.BatchNormalization()(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
 
-    conv = layers.GlobalMaxPooling2D()(conv)
+    conv = tf.keras.layers.GlobalMaxPooling2D()(conv)
 
     return conv
 
-# define the standalone supervised and unsupervised discriminator models
-# Input ordering is xz, yz, xy.
-def define_discriminator_m(xz_shape=(80, 80, 1), yz_shape=(80, 80, 1), xy_shape=(80, 80, 1), n_classes=3):
-    xz_input = layers.Input(shape=xz_shape)
+
+def define_classifier(xz_shape, yz_shape, xy_shape, n_classes):
+    """Define classifier model.
+
+    Args:
+        xz_shape, yz_shape, xy_shape (tuple): Shapes of radar projections.
+        n_classes (int): Number of classes for model.
+
+    Returns:
+        model (Keras object): Classifier model.
+
+    Note:
+        Input ordering is xz, yz, xy.
+    """
+    xz_input = tf.keras.layers.Input(shape=xz_shape)
     xz_model = create_conv_layers(xz_input)
-    yz_input = layers.Input(shape=yz_shape)
+    yz_input = tf.keras.layers.Input(shape=yz_shape)
     yz_model = create_conv_layers(yz_input)
-    xy_input = layers.Input(shape=xy_shape)
+    xy_input = tf.keras.layers.Input(shape=xy_shape)
     xy_model = create_conv_layers(xy_input)
 
-    conv = layers.concatenate([yz_model, xz_model, xy_model])
+    conv = tf.keras.layers.concatenate([yz_model, xz_model, xy_model])
 
-    conv = layers.Dense(64)(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.3)(conv)
+    conv = tf.keras.layers.Dense(64)(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
+    conv = tf.keras.layers.Dropout(0.3)(conv)
 
-    conv = layers.Dense(64)(conv)
-    conv = layers.LeakyReLU(alpha=0.2)(conv)
-    conv = layers.Dropout(0.3)(conv)
+    conv = tf.keras.layers.Dense(64)(conv)
+    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
+    conv = tf.keras.layers.Dropout(0.3)(conv)
 
-    conv = layers.Dense(n_classes)(conv)
+    conv = tf.keras.layers.Dense(n_classes)(conv)
 
-    c_out_layer = layers.Activation('softmax')(conv)
+    out_layer = tf.keras.layers.Activation('softmax')(conv)
 
-    c_model = Model(inputs=[xz_input, yz_input, xy_input], outputs=[c_out_layer])
-    c_model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
+    model = tf.keras.Model(
+        inputs=[xz_input, yz_input, xy_input], outputs=[out_layer])
+    model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
         lr=0.0002, beta_1=0.5), metrics=['accuracy'])
 
-    # unsupervised output
-    d_out_layer = layers.Lambda(custom_activation)(conv)
-    # define and compile unsupervised discriminator model
-    d_model = Model(inputs=[xz_input, yz_input, xy_input], outputs=[d_out_layer])
-    d_model.compile(loss='binary_crossentropy',
-                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5))
-
-    return d_model, c_model
-
-# define the standalone supervised and unsupervised discriminator models
-
-
-def define_discriminator(in_shape=(1, 8192, 1), n_classes=3):
-    # image input
-    in_image = layers.Input(shape=in_shape)
-    # downsample
-    fe = layers.Conv2D(64, (5, 5), strides=(1, 4), padding='same')(in_image)
-    fe = layers.LeakyReLU(alpha=0.3)(fe)
-    #fe = layers.Dropout(0.2)(fe)
-    # downsample
-    fe = layers.Conv2D(128, (5, 5), strides=(1, 4), padding='same')(fe)
-    fe = layers.LeakyReLU(alpha=0.3)(fe)
-    #fe = layers.Dropout(0.2)(fe)
-    # downsample
-    fe = layers.Conv2D(256, (5, 5), strides=(1, 4), padding='same')(fe)
-    fe = layers.LeakyReLU(alpha=0.3)(fe)
-    #fe = layers.Dropout(0.2)(fe)
-    # downsample
-    fe = layers.Conv2D(512, (5, 5), strides=(1, 4), padding='same')(fe)
-    fe = layers.LeakyReLU(alpha=0.3)(fe)
-    #fe = layers.Dropout(0.2)(fe)
-    # downsample
-    fe = layers.Conv2D(1024, (5, 5), strides=(1, 2), padding='same')(fe)
-    fe = layers.LeakyReLU(alpha=0.3)(fe)
-    #fe = layers.Dropout(0.2)(fe)
-    # flatten feature maps
-    fe = layers.Flatten()(fe)
-    # dropout
-    #fe = layers.Dropout(0.4)(fe)
-    # output layer nodes
-    fe = layers.Dense(n_classes)(fe)
-    # supervised output
-    c_out_layer = layers.Activation('softmax')(fe)
-    # define and compile supervised discriminator model
-    c_model = Model(in_image, c_out_layer)
-    c_model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
-        lr=0.0002, beta_1=0.5), metrics=['accuracy'])
-    # unsupervised output
-    d_out_layer = layers.Lambda(custom_activation)(fe)
-    # define and compile unsupervised discriminator model
-    d_model = Model(in_image, d_out_layer)
-    d_model.compile(loss='binary_crossentropy',
-                    optimizer=tf.keras.optimizers.Adam(lr=0.0002, beta_1=0.5))
-    return d_model, c_model
-
-
-# Define the loss and optimizers.
-# This method returns a helper function to compute cross entropy loss
-cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
-loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=False)
-cat_loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False)
-
-
-def discriminator_loss(real_output, fake_output):
-    real_loss = cross_entropy(tf.ones_like(real_output), real_output)
-    fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
-    total_loss = real_loss + fake_loss
-    return total_loss
-
-
-def generator_loss(fake_output):
-    return cross_entropy(tf.ones_like(fake_output), fake_output)
-
-
-generator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
-discriminator_optimizer = tf.keras.optimizers.Adam(learning_rate=0.0001)
-
-# Save checkpoints.
-#checkpoint_dir = './training_checkpoints'
-#checkpoint_prefix = os.path.join(checkpoint_dir, "ckpt")
-# checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer,
-# discriminator_optimizer=discriminator_optimizer,
-# generator=generator,
-# discriminator=discriminator)
-
-# Define the training loop.
-EPOCHS = 50
-noise_dim = 100
-num_examples_to_generate = 16
-
-# We will reuse this seed overtime (so it's easier)
-# to visualize progress in the animated GIF)
-seed = tf.random.normal([num_examples_to_generate, noise_dim])
-
-# Select metrics to measure the loss and the accuracy of the model.
-gen_loss_metric = tf.keras.metrics.Mean(name='gen_loss')
-disc_loss_metric = tf.keras.metrics.Mean(name='disc_loss')
-test_loss_metric = tf.keras.metrics.Mean(name='test_loss')
-#disc_accy_metric = tf.keras.metrics.BinaryAccuracy(name='disc_accy')
-disc_accy_metric = tf.keras.metrics.CategoricalAccuracy(name='disc_accy')
-#test_accy_metric = tf.keras.metrics.BinaryAccuracy(name='test_accy')
-test_accy_metric = tf.keras.metrics.CategoricalAccuracy(name='test_accy')
-
-current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-gen_log_dir = 'logs/' + current_time + '/gen'
-disc_log_dir = 'logs/' + current_time + '/disc'
-graph_log_dir = 'logs/' + current_time + '/graph'
-gen_summary_writer = tf.summary.create_file_writer(gen_log_dir)
-disc_summary_writer = tf.summary.create_file_writer(disc_log_dir)
-graph_writer = tf.summary.create_file_writer(graph_log_dir)
-
-# Notice the use of `tf.function`
-# This annotation causes the function to be "compiled".
-# Ref: https://www.tensorflow.org/guide/keras/writing_a_training_loop_from_scratch
-
-
-@tf.function
-def train_step(dataset):
-    real_scans, real_labels = dataset
-
-    half_dataset = int(len(real_scans) / 2)
-
-    # Update supervised discriminator (c).
-    # Open a GradientTape to record the operations run
-    # during the forward pass, which enables auto-differentiation.
-    with tf.GradientTape() as tape:
-        predictions = c_model(real_scans[:half_dataset], training=True)
-        #discriminator_loss = loss_fn(labels, predictions)
-        c_model_loss = cat_loss_fn(real_labels[:half_dataset], predictions)
-    # Use the gradient tape to automatically retrieve
-    # the gradients of the trainable variables with respect to the loss.
-    gradients = tape.gradient(c_model_loss, c_model.trainable_weights)
-    # Run one step of gradient descent by updating
-    # the value of the variables to minimize the loss.
-    discriminator_optimizer.apply_gradients(
-        zip(gradients, c_model.trainable_weights))
-
-    disc_loss_metric.update_state(c_model_loss)
-    disc_accy_metric.update_state(real_labels[:half_dataset], predictions)
-
-    # Update un-supervised discriminator (d).
-    # Sample random points in the latent space.
-    random_latent_vectors = tf.random.normal(
-        shape=[len(real_scans) - half_dataset, noise_dim])
-    # Decode them to fake radar scans.
-    fake_scans = generator(random_latent_vectors)
-    # Combine them with real radar scans.
-    combined_scans = tf.concat([fake_scans, real_scans[half_dataset:]], axis=0)
-
-    # Assemble labels, assigning label=0 to fake radar scans.
-    combined_labels = tf.concat(
-        [tf.zeros((len(real_scans) - half_dataset, 1)), tf.ones((len(real_scans) - half_dataset, 1))], axis=0
-    )
-    # Add random noise to the labels - important trick!
-    #combined_labels += 0.05 * tf.random.uniform(combined_labels.shape)
-
-    with tf.GradientTape() as tape:
-        predictions = d_model(combined_scans, training=True)
-        #discriminator_loss = loss_fn(labels, predictions)
-        d_model_loss = loss_fn(combined_labels, predictions)
-    # Use the gradient tape to automatically retrieve
-    # the gradients of the trainable variables with respect to the loss.
-    gradients = tape.gradient(d_model_loss, d_model.trainable_weights)
-    # Run one step of gradient descent by updating
-    # the value of the variables to minimize the loss.
-    discriminator_optimizer.apply_gradients(
-        zip(gradients, d_model.trainable_weights))
-
-    # disc_loss_metric.update_state(c_model_loss)
-    #disc_accy_metric.update_state(combined_labels, predictions)
-
-    # Sample random points in the latent space.
-    random_latent_vectors = tf.random.normal(
-        shape=[len(real_scans), noise_dim])
-    # Assemble labels that say "all real images".
-    misleading_labels = tf.ones((len(real_scans), 1))
-
-    # Train the generator (note that we should *not* update the weights
-    # of the discriminator)!
-    with tf.GradientTape() as tape:
-        predictions = d_model(
-            generator(random_latent_vectors, training=True), training=False)
-        generator_loss = loss_fn(misleading_labels, predictions)
-    gradients = tape.gradient(generator_loss, generator.trainable_weights)
-    generator_optimizer.apply_gradients(
-        zip(gradients, generator.trainable_weights))
-
-    gen_loss_metric.update_state(generator_loss)
-
-
-@tf.function
-def train_step_c(dataset):
-    real_scans, real_labels = dataset
-
-    # Update supervised discriminator (c).
-    # Open a GradientTape to record the operations run
-    # during the forward pass, which enables auto-differentiation.
-    with tf.GradientTape() as tape:
-        predictions = c_model(real_scans, training=True)
-        #discriminator_loss = loss_fn(labels, predictions)
-        c_model_loss = cat_loss_fn(real_labels, predictions)
-    # Use the gradient tape to automatically retrieve
-    # the gradients of the trainable variables with respect to the loss.
-    gradients = tape.gradient(c_model_loss, c_model.trainable_weights)
-    # Run one step of gradient descent by updating
-    # the value of the variables to minimize the loss.
-    discriminator_optimizer.apply_gradients(
-        zip(gradients, c_model.trainable_weights))
-
-    disc_loss_metric.update_state(c_model_loss)
-    disc_accy_metric.update_state(real_labels, predictions)
-
-
-@tf.function
-def test_step(dataset):
-    scans, labels = dataset
-    predictions = c_model(scans, training=False)
-    loss = cat_loss_fn(labels, predictions)
-    test_loss_metric.update_state(loss)
-    test_accy_metric.update_state(labels, predictions)
-
-
-def train_old(train_dataset, val_dataset, epochs):
-    for epoch in range(epochs):
-        start = time.time()
-
-        for step, train_batch in enumerate(train_dataset):
-            # train_step_c(train_batch)
-            X, y = train_batch
-            c_loss, c_acc = c_model.train_on_batch(X, y)
-            #print(f'step: {step} c_loss: {c_loss}, c_acc: {c_acc}')
-
-        print(f'epoch: {epoch} c_loss: {c_loss}, c_acc: {c_acc}')
-
-        # with gen_summary_writer.as_default():
-        #tf.summary.scalar('gen_loss', gen_loss_metric.result(), step=epoch)
-
-        # with disc_summary_writer.as_default():
-        #tf.summary.scalar('disc_loss', disc_loss_metric.result(), step=epoch)
-
-        # Produce images for the GIF as we go
-        # display.clear_output(wait=True)
-        #generate_and_save_images(generator, epoch + 1, seed)
-
-        # Save the model every 15 epochs
-        # if (epoch + 1) % 15 == 0:
-        #checkpoint.save(file_prefix = checkpoint_prefix)
-
-        # Run a validation loop at the end of each epoch.
-        # for step, val_batch in enumerate(val_dataset):
-        # test_step(val_batch)
-        #X, y = val_batch
-        #c_model.evaluate(X, y=y, batch_size=1)
-
-        X, y = val_dataset
-        c_model.evaluate(X, y=y, batch_size=32)
-
-        """
-    print(
-        f'Epoch: {epoch + 1}, '
-        f'Time: {time.time()- start}, '
-        f'Generator Loss: {gen_loss_metric.result()}, '
-        f'Discriminator Test Loss: {disc_loss_metric.result()}, '
-        f'Discriminator Test Accy: {disc_accy_metric.result()}, '
-        f'Discriminator Val Loss: {test_loss_metric.result()}, '
-        f'Discriminator Val Accy: {test_accy_metric.result()}, '
-    )
-
-    # Reset metrics.
-    gen_loss_metric.reset_states()
-    disc_loss_metric.reset_states()
-    disc_accy_metric.reset_states()
-    test_accy_metric.reset_states()
-    test_loss_metric.reset_states()
-    """
-
-    # Generate after the final epoch
-    # display.clear_output(wait=True)
-    #generate_and_save_images(generator, epochs, seed)
-
-
-def generate_and_save_images(model, epoch, test_input):
-    # Notice `training` is set to False.
-    # This is so all layers run in inference mode (batchnorm).
-    predictions = model(test_input, training=False)
-
-    fig = plt.figure(figsize=(4, 4))
-
-    for i in range(predictions.shape[0]):
-        plt.subplot(4, 4, i+1)
-        plt.imshow(predictions[i, :, :, 0] * 127.5 + 127.5, cmap='gray')
-        plt.axis('off')
-
-    plt.savefig('image_at_epoch_{:04d}.png'.format(epoch))
-    # plt.show()
+    return model
 
 
 def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
-    rg = np.random.Generator(np.random.PCG64())
-
+    """Augment a tuple of radar projections."""
     def clamp(p):
         p[p > 1.0] = 1.0
         p[p < -1.0] = -1.0
@@ -572,7 +174,7 @@ def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
 
     def add_noise(p, sd):
         """Add Gaussian noise."""
-        p += rg.normal(scale=sd)
+        p += rng.normal(scale=sd)
         return clamp(p)
 
     # Generate new tuple of rotated projections.
@@ -597,101 +199,266 @@ def augment_data(x, rotation_range=1.0, zoom_range=0.3, noise_sd=1.0):
     return x
 
 
-def prepare(data, labels, shuffle=False, augment=False, balance=False,
-            proj_mask=[True, True, True], batch_size=32):
+def preprocess_data(args, data, labels):
+    """Preprocess data set for use in training the model. 
+
+    Args:
+        args (parser object): command line arguments.
+        data (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+        augment (bool): Flag indicating radar projections will be augmented.
+
+    Returns:
+        train_set (tuple of list of np.array): Training set. 
+        val_set (tuple of list of np.array): Validation set.
+        n_classes (int): Number of classes in data set.
+        w_classes (dict): Class weight dict.
     """
-    Prepare radar data for training and validation.
-    """
-    if augment:
-        data = [augment_data(d) for d in data]
+    # Scale each feature to the [-1, 1] range from [0, RADAR_MAX]
+    logger.info('Scaling samples.')
+    scaled_data = [tuple(
+        (p - common.RADAR_MAX / 2.) / (common.RADAR_MAX / 2.) for p in s
+    ) for s in data
+    ]
 
-    #data = common.process_samples(data, proj_mask=proj_mask)
+    if args.augment:
+        logger.info('Augmenting data.')
+        scaled_data = [augment_data(d) for d in scaled_data]
 
-    if balance:
-        data, labels = balance_classes(data, labels)
+    # Encode the labels.
+    logger.info('Encoding labels.')
+    le = preprocessing.LabelEncoder()
+    encoded_labels = le.fit_transform(labels)
+    class_names = list(le.classes_)
 
-    # Gather up projections in each sample point.
-    xz, yz, xy = [], [], []
-    for d in data:
-        xz.append(d[0])
-        yz.append(d[1])
-        xy.append(d[2])
+    counter = collections.Counter(encoded_labels)
+    max_v = float(max(counter.values()))
+    w_classes = {cls: round(max_v / v, 2) for cls, v in counter.items()}
+    n_classes = len(list(counter))
 
-    xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
-
-    labels = tf.cast(labels, dtype=tf.float32)
-
-    dataset = tf.data.Dataset.from_tensor_slices(((xz, yz, xy), labels))
-
-    if shuffle:
-        dataset = dataset.shuffle(len(labels), reshuffle_each_iteration=True)
-
-    # Resize images and add channel demension. 
-    def dataset_map(d, l):
-        xz, yz, xy = d
-        xz = tf.image.resize(xz[..., tf.newaxis], [30, 200])
-        yz = tf.image.resize(yz[..., tf.newaxis], [30, 200])
-        xy = tf.image.resize(xy[..., tf.newaxis], [30, 200])
-        return (xz, yz, xy), l
-    dataset = dataset.map(dataset_map)
-
-    dataset = dataset.batch(batch_size)
-
-    return dataset.prefetch(buffer_size=tf.data.AUTOTUNE)
-
-
-def balance_classes(data, labels):
-    """Balance classess."""
-    # Most common classes and their counts from the most common to the least.
-    c = collections.Counter(labels)
-    mc = c.most_common()
-
-    # Return if already balanced.
-    if len(set([c for _, c in mc])) == 1:
-        return labels, data
-
-    print(f'Unbalanced most common: {mc}')
-    print(f'Unbalanced label len: {len(labels)}')
-    print(f'Unbalanced data len: {len(data)}')
-
-    # Build a list of class indices from most common rankings.
-    indices = [np.nonzero(labels == i)[0] for (i, _) in mc]
-    # Use that list to build a list of label sets corresponding to each class.
-    labels_list = [labels[i] for i in indices]
-    # Use that list again to build a list of data sets corresponding to each class.
-    data_list = [data[i] for i in indices]
-
-    # Upsample data and label sets.
-    _, majority_size = mc[0]
-
-    def upsample(samples):
-        return utils.resample(
-            samples,
-            replace=True,               # sample with replacement
-            n_samples=majority_size,    # to match majority class
-            random_state=RANDOM_SEED    # reproducible results
+    # Output data set summary.
+    logger.info(
+        f'Found {n_classes} classes and {len(labels)} samples:'
+    )
+    for i, c in enumerate(class_names):
+        logger.info(
+            f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}'
         )
-    data_upsampled = [upsample(data) for data in data_list]
-    labels_upsampled = [upsample(label) for label in labels_list]
+    logger.info(f'Class weights: {w_classes}')
 
-    # Recombine the separate, and now upsampled, label and data sets.
-    data_balanced = functools.reduce(
-        lambda a, b: np.vstack((a, b)), data_upsampled
+    # Convert radar samples from [(xz, yz, xy), ...] to [[XZ],[YZ],[XY]].
+    # i.e., from tuples of projections per sample to arrays of projections.
+    # This is required for downstream processing.
+    # Gather up projections in each sample. Resize to make same shape.
+    XZ, YZ, XY = [], [], []
+    for d in scaled_data:
+        # Convert numpy ndarrays to PIL Image objects.
+        # Note : Using PIL because its really fast.
+        xz, yz, xy = Image.fromarray(d[0]), Image.fromarray(
+            d[1]), Image.fromarray(d[2])
+        # Scale PIL Images, convert back to numpy ndarrys and add to lists.
+        XZ.append(np.asarray(xz.resize(RESCALE, resample=Image.BICUBIC)))
+        YZ.append(np.asarray(yz.resize(RESCALE, resample=Image.BICUBIC)))
+        XY.append(np.asarray(xy.resize(RESCALE, resample=Image.BICUBIC)))
+    # Make each array 3D so that they can be concatenated.
+    XZ, YZ, XY = np.array(XZ), np.array(YZ), np.array(XY)
+    XZ = XZ[..., np.newaxis]
+    YZ = YZ[..., np.newaxis]
+    XY = XY[..., np.newaxis]
+    # Form the samples array that will be used for training.
+    # It will have the shape (n_samples, rows, cols, projections).
+    # Note: samples[...,0]=XZ, samples[...,1]=YZ, samples[...,2]=XY
+    samples = np.concatenate((XZ, YZ, XY), axis=3)
+
+    # Encode labels.
+    encoded_labels = np.array(encoded_labels)
+
+    # Shuffle dataset.
+    idx = np.arange(samples.shape[0])
+    rng.shuffle(idx)
+    samples, encoded_labels = samples[idx], encoded_labels[idx]
+
+    # Split dataset.
+    split = min(int(samples.shape[0] * args.train_split), samples.shape[0])
+    X_train, y_train = samples[:split], encoded_labels[:split]
+    X_val, y_val = samples[split:], encoded_labels[split:]
+
+    logger.debug(
+        f'Shape summary...'
+        f'  X_train: {X_train.shape}'
+        f'  y_train: {y_train.shape}'
+        f'  X_val: {X_val.shape}'
+        f'  y_val: {y_val.shape}'
     )
-    labels_balanced = functools.reduce(
-        lambda a, b: np.concatenate((a, b)), labels_upsampled
+
+    return X_train, y_train, X_val, y_val, n_classes, w_classes
+
+
+def get_datasets(args):
+    """Gets and parses dataset(s) from command line.
+
+    Args:
+        args (parser object): command line arguments.
+
+    Returns:
+        samples (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+
+    Note:
+        Causes program to exit if data set not found on filesystem. 
+    """
+    samples, labels = [], []
+
+    for dataset in args.datasets:
+        logger.info(f'Opening dataset: {dataset}')
+        try:
+            with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
+                data_pickle = pickle.load(fp)
+        except FileNotFoundError as e:
+            logger.error(f'Dataset not found: {e}')
+            exit(1)
+        logger.debug(f'Found class labels: {set(data_pickle["labels"])}.')
+        samples.extend(data_pickle['samples'])
+        labels.extend(data_pickle['labels'])
+
+    return samples, labels
+
+
+def filter_data(args, samples, labels):
+    """Filter desired classes and apply aliases. 
+
+    Args:
+        args (parser object): command line arguments.
+        samples (list of tuples of np.arrays): Radar samples in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
+        labels (list of strings): Radar sample labels.
+
+    Returns:
+        filtered_samples (list of tuples of np.arrays): Filtered and aliased radar samples. 
+        filtered_labels (list of strings): Filtered and aliased radar sample labels.
+
+    Note:
+        Returns original samples and labels if no filter and no aliases.
+    """
+    # Alias class names.
+    keys = CLASS_ALIAS.keys()
+    if set(labels) - set(keys):
+        logger.info('Using aliased class names.')
+        aliased_labels = list(
+            map(
+                lambda x: CLASS_ALIAS[x] if x in list(keys) else x,
+                labels
+            )
+        )
+    else:
+        aliased_labels = labels
+
+    # Filter desired samples and classes.
+    logger.info('Maybe filtering data set.')
+    filtered_labels = [l for l in aliased_labels if l in args.desired_labels]
+    filtered_samples = [s for i, s in enumerate(
+        samples) if aliased_labels[i] in args.desired_labels]
+
+    return filtered_samples, filtered_labels
+
+
+def main(args):
+    """Main program.
+
+    Args:
+        args (parser object): command line arguments.
+
+    """
+    # Log to both stdout and a file.
+    log_file = os.path.join(args.results_dir, 'train.log')
+    logging.basicConfig(
+        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
+        level=logging.DEBUG if args.logging_level == 'debug' else logging.INFO,
+        handlers=[
+            logging.FileHandler(log_file, mode='w'),
+            logging.StreamHandler(sys.stdout)
+        ]
     )
+    # Get samples, labels and supervised training mask.
+    samples, labels = get_datasets(args)
+    # Filter and alias samples and labels.
+    filtered_samples, filtered_labels = filter_data(args, samples, labels)
+    # Prepare data for training.
+    X, y, X_val, y_val, n_classes, w_classes = preprocess_data(
+        args, filtered_samples, filtered_labels)
+    # Create the model.
+    shape = RESCALE + (1,)
+    model = define_classifier(
+        xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
+    model.summary(print_fn=logger.debug)
+    # Actual training.
+    early_stop = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        mode='min',
+        verbose=1,
+        patience=10
+    )
+    X_train = [X[...,0], X[...,1], X[...,2]]
+    X_val = [X_val[...,0], X_val[...,1], X_val[...,2]]
+    hist = model.fit(
+        x=X_train,
+        y=y,
+        batch_size=64,
+        epochs=100,
+        validation_data=(X_val, y_val),
+        class_weight=w_classes,
+        callbacks=[early_stop]
+    )
+    low_val_loss = min(hist.history['val_loss'])
+    low_val_loss_idx = hist.history.val_loss.index(low_val_loss)
+    logger.info(f'low_val_loss: {low_val_loss}, low_val_loss_idx: {low_val_loss_idx}')
 
-    c = collections.Counter(labels_balanced)
-    mc = c.most_common()
 
-    print(f'Balanced most common: {mc}')
-    print(f'Balanced label len: {len(labels_balanced)}')
-    print(f'Balanced data len: {len(data_balanced)}')
+if __name__ == '__main__':
+    # Directory to save training results.
+    default_results_dir = 'train-results/dnn'
+    # Training datasets.
+    default_datasets = []
+    # Labels to use for training.
+    default_desired_labels = ['person', 'dog', 'cat', 'pet']
+    # Fraction of data set used for training, must be <=1.0.
+    default_train_split = 0.8
 
-    return data_balanced, labels_balanced
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--datasets', nargs='+', type=str,
+        help='paths to training datasets',
+        default=default_datasets
+    )
+    parser.add_argument(
+        '--desired_labels', nargs='+', type=str,
+        help='labels to use for training',
+        default=default_desired_labels
+    )
+    parser.add_argument(
+        '--logging_level', type=str,
+        help='logging level, "info" or "debug"',
+        default='info'
+    )
+    parser.add_argument(
+        '--train_split', type=float,
+        help='train fraction of data set',
+        default=default_train_split
+    )
+    parser.add_argument(
+        '--results_dir', type=str,
+        help='training results path',
+        default=os.path.join(common.PRJ_DIR, default_results_dir)
+    )
+    parser.add_argument(
+        '--augment', action='store_true',
+        help='if true data set will be augmented',
+    )
+    parser.set_defaults(augment=False)
+    args = parser.parse_args()
 
+    main(args)
 
+"""
 if __name__ == '__main__':
     # Log file name.
     default_log_file = 'train-results/train.log'
@@ -942,8 +709,4 @@ if __name__ == '__main__':
         class_weight=class_weight,
         callbacks=[early_stop]
     )
-
-    # train model
-    #train(g_model, d_model, c_model, gan_model, dataset)
-
-    # c_model.evaluate(val_dataset)
+"""

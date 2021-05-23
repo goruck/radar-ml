@@ -1,3 +1,4 @@
 *.pickle
 __pycache__
 .vscode
+*.h5

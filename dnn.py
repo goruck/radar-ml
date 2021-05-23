@@ -45,24 +45,10 @@ CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
 def create_conv_layers(input):
     """Creates convolutional layers."""
     input_shape = input.shape[1:]
-
-    conv = tf.keras.layers.Conv2D(32, (4, 4), strides=(
-        2, 2), padding='same', input_shape=input_shape)(input)
-    conv = tf.keras.layers.BatchNormalization()(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-
+    conv = tf.keras.layers.Conv2D(64, (3, 3), strides=(
+        2, 2), padding='same', activation='relu', input_shape=input_shape)(input)
     conv = tf.keras.layers.Conv2D(
-        64, (4, 4), strides=(2, 2), padding='same')(conv)
-    conv = tf.keras.layers.BatchNormalization()(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-
-    conv = tf.keras.layers.Conv2D(
-        128, (4, 4), strides=(2, 2), padding='same')(conv)
-    conv = tf.keras.layers.BatchNormalization()(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-
-    conv = tf.keras.layers.GlobalMaxPooling2D()(conv)
-
+        32, (3, 3), strides=(2, 2), padding='same', activation='relu')(conv)
     return conv
 
 
@@ -79,30 +65,29 @@ def define_classifier(xz_shape, yz_shape, xy_shape, n_classes):
     Note:
         Input ordering is xz, yz, xy.
     """
+    # Make convolutional layers for each radar projection.
     xz_input = tf.keras.layers.Input(shape=xz_shape)
     xz_conv = create_conv_layers(xz_input)
     yz_input = tf.keras.layers.Input(shape=yz_shape)
     yz_conv = create_conv_layers(yz_input)
     xy_input = tf.keras.layers.Input(shape=xy_shape)
     xy_conv = create_conv_layers(xy_input)
-
-    conv = tf.keras.layers.concatenate([yz_conv, xz_conv, xy_conv])
-
-    dense = tf.keras.layers.Dense(64)(conv)
-    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
-    dense = tf.keras.layers.Dropout(0.3)(dense)
-
-    dense = tf.keras.layers.Dense(64)(dense)
-    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
-    dense = tf.keras.layers.Dropout(0.3)(dense)
-
+    # Concat convolutions.
+    conv = tf.keras.layers.concatenate([xz_conv, yz_conv, xy_conv])
+    # Create a feature vector.
+    fv = tf.keras.layers.Flatten()(conv)
+    # Create dense layers and operate on the feature vector.
+    dense = tf.keras.layers.Dense(64, activation='relu')(fv)
+    dense = tf.keras.layers.Dropout(0.5)(dense)
+    dense = tf.keras.layers.Dense(64, activation='relu')(dense)
+    dense = tf.keras.layers.Dropout(0.5)(dense)
+    # Classifier.
     cls = tf.keras.layers.Dense(units=n_classes, activation='softmax')(dense)
-
+    # Create model and compile it.
     model = tf.keras.Model(
         inputs=[xz_input, yz_input, xy_input], outputs=[cls])
     model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
         lr=0.0002, beta_1=0.5), metrics=['accuracy'])
-
     return model
 
 
@@ -430,12 +415,13 @@ def main(args):
     X, y, X_val, y_val, n_classes, w_classes = preprocess_data(
         args, filtered_samples, filtered_labels)
     # Create the model.
+    logger.info('Creating model.')
     shape = RESCALE + (1,)
     model = define_classifier(
         xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
     model.summary(print_fn=logger.debug)
     # Actual training.
-    logger.info('Starting training.')
+    logger.info('Training model.')
     train(model, X, y, X_val, y_val, w_classes)
 
 

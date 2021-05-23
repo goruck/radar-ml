@@ -30,7 +30,7 @@ RANDOM_SEED = 1234
 rng = np.random.default_rng(RANDOM_SEED)
 
 # Radar projection rescaling factor.
-RESCALE = (128, 128)
+RESCALE = (80, 80)
 
 # Class aliases.
 # Some data sets used pet names instead of pet type so this makes them consistent.
@@ -42,12 +42,12 @@ CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
 # np.set_printoptions(threshold=sys.maxsize)
 
 
-def create_conv_layers(input_scan):
+def create_conv_layers(input):
     """Creates convolutional layers."""
-    input_shape = input_scan.shape[1:]
+    input_shape = input.shape[1:]
 
     conv = tf.keras.layers.Conv2D(32, (4, 4), strides=(
-        2, 2), padding='same', input_shape=input_shape)(input_scan)
+        2, 2), padding='same', input_shape=input_shape)(input)
     conv = tf.keras.layers.BatchNormalization()(conv)
     conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
 
@@ -80,28 +80,26 @@ def define_classifier(xz_shape, yz_shape, xy_shape, n_classes):
         Input ordering is xz, yz, xy.
     """
     xz_input = tf.keras.layers.Input(shape=xz_shape)
-    xz_model = create_conv_layers(xz_input)
+    xz_conv = create_conv_layers(xz_input)
     yz_input = tf.keras.layers.Input(shape=yz_shape)
-    yz_model = create_conv_layers(yz_input)
+    yz_conv = create_conv_layers(yz_input)
     xy_input = tf.keras.layers.Input(shape=xy_shape)
-    xy_model = create_conv_layers(xy_input)
+    xy_conv = create_conv_layers(xy_input)
 
-    conv = tf.keras.layers.concatenate([yz_model, xz_model, xy_model])
+    conv = tf.keras.layers.concatenate([yz_conv, xz_conv, xy_conv])
 
-    conv = tf.keras.layers.Dense(64)(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-    conv = tf.keras.layers.Dropout(0.3)(conv)
+    dense = tf.keras.layers.Dense(64)(conv)
+    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
+    dense = tf.keras.layers.Dropout(0.3)(dense)
 
-    conv = tf.keras.layers.Dense(64)(conv)
-    conv = tf.keras.layers.LeakyReLU(alpha=0.2)(conv)
-    conv = tf.keras.layers.Dropout(0.3)(conv)
+    dense = tf.keras.layers.Dense(64)(dense)
+    dense = tf.keras.layers.LeakyReLU(alpha=0.2)(dense)
+    dense = tf.keras.layers.Dropout(0.3)(dense)
 
-    conv = tf.keras.layers.Dense(n_classes)(conv)
-
-    out_layer = tf.keras.layers.Activation('softmax')(conv)
+    cls = tf.keras.layers.Dense(units=n_classes, activation='softmax')(dense)
 
     model = tf.keras.Model(
-        inputs=[xz_input, yz_input, xy_input], outputs=[out_layer])
+        inputs=[xz_input, yz_input, xy_input], outputs=[cls])
     model.compile(loss='sparse_categorical_crossentropy', optimizer=tf.keras.optimizers.Adam(
         lr=0.0002, beta_1=0.5), metrics=['accuracy'])
 
@@ -361,6 +359,52 @@ def filter_data(args, samples, labels):
     return filtered_samples, filtered_labels
 
 
+def train(model, X, y, X_val, y_val, w_classes):
+    """Train model, save best model and log summary.
+
+    Args:
+        model (Keras object): dnn model to be trained.
+        X (numpy array): Training data, 4-D numpy array.
+        y (numpy array): Training data labels.
+        X_val (numpy array): Validation data, 4-D numpy array.
+        y_val (numpy array): Validation data labels.
+        w_classes (dict): Class weights. 
+    """
+    early_stop = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        mode='min',
+        verbose=1,
+        patience=10
+    )
+    fp = os.path.join(args.results_dir, 'c_model.h5')
+    model_ckpt = tf.keras.callbacks.ModelCheckpoint(
+        filepath=fp,
+        monitor='val_loss',
+        verbose=1,
+        save_best_only=True
+    )
+    X_train = [X[..., 0], X[..., 1], X[..., 2]]
+    X_val = [X_val[..., 0], X_val[..., 1], X_val[..., 2]]
+    hist = model.fit(
+        x=X_train,
+        y=y,
+        batch_size=64,
+        epochs=100,
+        validation_data=(X_val, y_val),
+        class_weight=w_classes,
+        callbacks=[early_stop, model_ckpt]
+    )
+    best_val_loss = min(hist.history['val_loss'])
+    best_val_loss_idx = hist.history['val_loss'].index(best_val_loss)
+    best_val_acc = hist.history['val_accuracy'][best_val_loss_idx]
+    best_loss = hist.history['loss'][best_val_loss_idx]
+    best_acc = hist.history['accuracy'][best_val_loss_idx]
+    logger.info(f'Best loss: {best_loss:.4f}, Best acc: {best_acc*100:.2f}%')
+    logger.info(
+        f'Best val loss: {best_val_loss:.4f}, Best val acc: {best_val_acc*100:.2f}%')
+    logger.info(f'Saved best model to {args.results_dir}')
+
+
 def main(args):
     """Main program.
 
@@ -391,26 +435,8 @@ def main(args):
         xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
     model.summary(print_fn=logger.debug)
     # Actual training.
-    early_stop = tf.keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        mode='min',
-        verbose=1,
-        patience=10
-    )
-    X_train = [X[...,0], X[...,1], X[...,2]]
-    X_val = [X_val[...,0], X_val[...,1], X_val[...,2]]
-    hist = model.fit(
-        x=X_train,
-        y=y,
-        batch_size=64,
-        epochs=100,
-        validation_data=(X_val, y_val),
-        class_weight=w_classes,
-        callbacks=[early_stop]
-    )
-    low_val_loss = min(hist.history['val_loss'])
-    low_val_loss_idx = hist.history.val_loss.index(low_val_loss)
-    logger.info(f'low_val_loss: {low_val_loss}, low_val_loss_idx: {low_val_loss_idx}')
+    logger.info('Starting training.')
+    train(model, X, y, X_val, y_val, w_classes)
 
 
 if __name__ == '__main__':
@@ -457,256 +483,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     main(args)
-
-"""
-if __name__ == '__main__':
-    # Log file name.
-    default_log_file = 'train-results/train.log'
-    # Training datasets.
-    default_datasets = ['datasets/radar_samples.pickle']
-    # SVM confusion matrix name.
-    default_svm_cm = 'train-results/svm_cm.png'
-    # SVM model name.
-    default_svm_model = 'train-results/svm_radar_classifier.pickle'
-    # Label encoder name.
-    default_label_encoder = 'train-results/radar_labels.pickle'
-    # Radar 2-D projections to use for predictions (xy, xz, yz).
-    default_proj_mask = [True, True, True]
-    # Labels to use for training.
-    default_desired_labels = ['person', 'dog', 'cat', 'pet']
-    # Each epoch augments entire data set (zero disables).
-    default_epochs = 0
-    # Fraction of data set used for training, validation, testing.
-    # Must sum to 1.0.
-    default_train_val_test_frac = [0.8, 0.2, 0.0]
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--epochs', type=int,
-        help='number of augementation epochs',
-        default=default_epochs
-    )
-    parser.add_argument(
-        '--datasets', nargs='+', type=str,
-        help='paths to training datasets',
-        default=default_datasets
-    )
-    parser.add_argument(
-        '--desired_labels', nargs='+', type=str,
-        help='labels to use for training',
-        default=default_desired_labels
-    )
-    parser.add_argument(
-        '--proj_mask', nargs='+', type=bool,
-        help='projection mask (xy, xz, yz)',
-        default=default_proj_mask
-    )
-    parser.add_argument(
-        '--svm_cm', type=str,
-        help='path of output svm confusion matrix',
-        default=os.path.join(common.PRJ_DIR, default_svm_cm)
-    )
-    parser.add_argument(
-        '--svm_model', type=str,
-        help='path of output svm model name',
-        default=os.path.join(common.PRJ_DIR, default_svm_model)
-    )
-    parser.add_argument(
-        '--label_encoder', type=str,
-        help='path of output label encoder',
-        default=os.path.join(common.PRJ_DIR, default_label_encoder)
-    )
-    parser.add_argument(
-        '--logging_level', type=str,
-        help='logging level, "info" or "debug"',
-        default='info'
-    )
-    parser.add_argument(
-        '--online_learn', action='store_true',
-        help='use dataset(s) for online learning (ignored if --use_svc'
-    )
-    parser.add_argument(
-        '--use_svc', action='store_true',
-        help='use svm.SVC instead of linear_model.SGDClassifier'
-    )
-    parser.add_argument(
-        '--train_val_test_frac', nargs='+', type=float,
-        help='train, val, test fraction of data set. must sum to 1.0',
-        default=default_train_val_test_frac
-    )
-    parser.add_argument(
-        '--log_file', type=str,
-        help='path of output svm model name',
-        default=os.path.join(common.PRJ_DIR, default_log_file)
-    )
-    parser.set_defaults(online_learn=False)
-    parser.set_defaults(use_svc=False)
-    args = parser.parse_args()
-
-    logging.basicConfig(
-        format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
-        level=logging.DEBUG if args.logging_level == 'debug' else logging.INFO,
-        handlers=[
-            logging.FileHandler(args.log_file, mode='w'),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
-
-    # Combine multiple datasets if given.
-    samples = []
-    labels = []
-
-    for dataset in args.datasets:
-        logger.info(f'Opening dataset: {dataset}')
-        try:
-            with open(os.path.join(common.PRJ_DIR, dataset), 'rb') as fp:
-                data_pickle = pickle.load(fp)
-        except FileNotFoundError as e:
-            logger.error(f'Dataset not found: {e}')
-            exit(1)
-        logger.debug(f'Found class labels: {set(data_pickle["labels"])}.')
-        samples.extend(data_pickle['samples'])
-        labels.extend(data_pickle['labels'])
-
-    # Use alised class names.
-    CLASS_ALIAS = {'polly': 'dog', 'rebel': 'cat'}
-    #CLASS_ALIAS = {'polly': 'pet', 'rebel': 'pet', 'dog': 'pet', 'cat': 'pet'}
-    keys = CLASS_ALIAS.keys()
-    if set(labels) - set(keys):
-        print('Using alised class names.')
-        labels = list(
-            map(
-                lambda x: CLASS_ALIAS[x] if x in list(keys) else x,
-                labels
-            )
-        )
-
-    data = {'samples': samples, 'labels': labels}
-
-    # Filter desired classes.
-    logger.info('Maybe filtering classes.')
-    desired = list(
-        map(lambda x: 1 if x in args.desired_labels else 0, data['labels'])
-    )
-    # Samples are in the form [(xz, yz, xy), ...] in range [0, RADAR_MAX].
-    samples = [s for i, s in enumerate(data['samples']) if desired[i]]
-
-    # Scale each feature to the [-1, 1] range.
-    logger.info('Scaling samples.')
-    samples = [tuple(
-        (p - common.RADAR_MAX / 2) / (common.RADAR_MAX / 2) for p in s
-    ) for s in samples
-    ]
-
-    # Encode the labels.
-    logger.info('Encoding labels.')
-    le = preprocessing.LabelEncoder()
-    desired_labels = [l for i, l in enumerate(data['labels']) if desired[i]]
-    encoded_labels = le.fit_transform(desired_labels)
-    class_names = list(le.classes_)
-
-    # Data set summary.
-    logger.info(
-        f'Found {len(class_names)} classes and {len(desired_labels)} samples:')
-    for i, c in enumerate(class_names):
-        logger.info(
-            f'...class: {i} "{c}" count: {np.count_nonzero(encoded_labels==i)}')
-
-    # Split data and labels up into train, validation and test sets.
-    logger.info(f'Splitting data set:')
-    train_frac, val_frac, test_frac = args.train_val_test_frac
-    X_train, X_val_test, y_train, y_val_test = model_selection.train_test_split(
-        samples, encoded_labels, test_size=val_frac + test_frac,
-        random_state=RANDOM_SEED, shuffle=True
-    )
-    val_split = int(len(X_val_test) * val_frac / (val_frac + test_frac))
-    X_val, y_val = X_val_test[:val_split], y_val_test[:val_split]
-    X_test, y_test = X_val_test[val_split:], y_val_test[val_split:]
-    logger.info(f'...training samples: {len(X_train)}')
-    logger.info(f'...validation samples: {len(X_val)}')
-    logger.info(f'...test samples: {len(X_test)}')
-
-    proj_mask = common.ProjMask(*args.proj_mask)
-    logger.info(f'Projection mask: {proj_mask}')
-    logger.info(f'Augment epochs: {args.epochs}')
-    logger.info(f'Online learning: {args.online_learn}')
-
-    #zf = 8192 / 10010
-    #proj_zoom = common.ProjZoom([zf, zf], [zf, zf], [zf, zf])
-
-    BATCH_SIZE = 64
-
-    #y_train = tf.cast(y_train, dtype=tf.float32)
-    #y_val = tf.cast(y_val, dtype=tf.float32)
-
-    # Prepare datasets for training and validation.
-    #train_dataset = prepare(X_train, y_train, shuffle=True,
-                            #augment=False, batch_size=64, balance=False)
-    # for d, l in train_dataset:
-    #print(d, l)
-    # exit()
-    #val_dataset = prepare(X_val, y_val)
-    # for d, l in val_dataset:
-    #print(d, l)
-    # exit()
-
-    #train(train_dataset, val_dataset, EPOCHS)
-
-    # Gather up projections in each sample point.
-    xz, yz, xy = [], [], []
-    for s in samples:
-        xz.append(np.resize(s[0], (80, 80)))
-        yz.append(np.resize(s[1], (80, 80)))
-        xy.append(np.resize(s[2], (80, 80)))
-
-    xz, yz, xy = np.array(xz), np.array(yz), np.array(xy)
-
-    xz = xz[..., np.newaxis]
-    yz = yz[..., np.newaxis]
-    xy = xy[..., np.newaxis]
-
-    print(xz.shape, yz.shape, xy.shape)
-
-    # channel 0 = xz, ch 1 = yz, ch2 = xy
-    X = np.concatenate((xz, yz, xy), axis=3)
-    print(X.shape)
-
-    y = np.array(encoded_labels)
-
-    print(y.shape)
-
-    rng = np.random.default_rng()
-    idx = np.arange(X.shape[0])
-    rng.shuffle(idx)
-    X, y = X[idx], y[idx]
-
-    counter = collections.Counter(encoded_labels)
-    max_v = float(max(counter.values()))
-    class_weight = {cls: max_v / v for cls, v in counter.items()}
-    logger.info(f'class weight: {class_weight}')
-    num_classes = len(list(counter))
-    logger.info(f'number of classes: {num_classes}')
-
-    d_model, c_model = define_discriminator_m(n_classes=num_classes)
-    d_model.summary()
-    c_model.summary()
-
-    early_stop = tf.keras.callbacks.EarlyStopping(
-        monitor='val_loss',
-        mode='min',
-        verbose=1,
-        patience=10
-    )
-
-    c_model.fit(
-        #train_dataset,
-        x=[X[...,0], X[...,1], X[...,2]],
-        y=y,
-        batch_size=64,
-        validation_split=0.2,
-        epochs=100,
-        #validation_data=val_dataset,
-        class_weight=class_weight,
-        callbacks=[early_stop]
-    )
-"""

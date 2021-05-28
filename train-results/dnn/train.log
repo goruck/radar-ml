@@ -1,22 +1,22 @@
-2021-05-23 06:19:05,223 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
-2021-05-23 06:19:05,240 __main__     INFO     Opening dataset: datasets/radar_samples_22Feb21.pickle
-2021-05-23 06:19:05,249 __main__     INFO     Opening dataset: datasets/radar_samples_26Feb21.pickle
-2021-05-23 06:19:05,260 __main__     INFO     Opening dataset: datasets/radar_samples_28Feb21.pickle
-2021-05-23 06:19:05,269 __main__     INFO     Opening dataset: datasets/radar_samples_19Oct20.pickle
-2021-05-23 06:19:05,270 __main__     INFO     Opening dataset: datasets/radar_samples_20Sep20.pickle
-2021-05-23 06:19:05,302 __main__     INFO     Opening dataset: datasets/radar_samples_20Oct20.pickle
-2021-05-23 06:19:05,303 __main__     INFO     Opening dataset: datasets/radar_samples_31Oct20.pickle
-2021-05-23 06:19:05,314 __main__     INFO     Using aliased class names.
-2021-05-23 06:19:05,315 __main__     INFO     Maybe filtering data set.
-2021-05-23 06:19:05,316 __main__     INFO     Scaling samples.
-2021-05-23 06:19:05,422 __main__     INFO     Encoding labels.
-2021-05-23 06:19:05,424 __main__     INFO     Found 3 classes and 4868 samples:
-2021-05-23 06:19:05,424 __main__     INFO     ...class: 0 "cat" count: 450
-2021-05-23 06:19:05,424 __main__     INFO     ...class: 1 "dog" count: 1952
-2021-05-23 06:19:05,424 __main__     INFO     ...class: 2 "person" count: 2466
-2021-05-23 06:19:05,424 __main__     INFO     Class weights: {2: 1.0, 1: 1.26, 0: 5.48}
-2021-05-23 06:19:06,525 __main__     INFO     Creating model.
-2021-05-23 06:19:07,062 __main__     INFO     Training model.
-2021-05-23 06:19:50,582 __main__     INFO     Best loss: 0.5842, Best acc: 85.82%
-2021-05-23 06:19:50,583 __main__     INFO     Best val loss: 0.4229, Best val acc: 84.29%
-2021-05-23 06:19:50,583 __main__     INFO     Saved best model to ./train-results/dnn
+2021-05-27 18:13:41,527 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2021-05-27 18:13:41,553 __main__     INFO     Opening dataset: datasets/radar_samples_22Feb21.pickle
+2021-05-27 18:13:41,567 __main__     INFO     Opening dataset: datasets/radar_samples_26Feb21.pickle
+2021-05-27 18:13:41,583 __main__     INFO     Opening dataset: datasets/radar_samples_28Feb21.pickle
+2021-05-27 18:13:41,597 __main__     INFO     Opening dataset: datasets/radar_samples_19Oct20.pickle
+2021-05-27 18:13:41,600 __main__     INFO     Opening dataset: datasets/radar_samples_20Sep20.pickle
+2021-05-27 18:13:41,647 __main__     INFO     Opening dataset: datasets/radar_samples_20Oct20.pickle
+2021-05-27 18:13:41,648 __main__     INFO     Opening dataset: datasets/radar_samples_31Oct20.pickle
+2021-05-27 18:13:41,666 __main__     INFO     Using aliased class names.
+2021-05-27 18:13:41,667 __main__     INFO     Maybe filtering data set.
+2021-05-27 18:13:41,667 __main__     INFO     Scaling samples.
+2021-05-27 18:13:41,772 __main__     INFO     Encoding labels.
+2021-05-27 18:13:41,776 __main__     INFO     Found 3 classes and 4868 samples:
+2021-05-27 18:13:41,776 __main__     INFO     ...class: 0 "cat" count: 450
+2021-05-27 18:13:41,776 __main__     INFO     ...class: 1 "dog" count: 1952
+2021-05-27 18:13:41,776 __main__     INFO     ...class: 2 "person" count: 2466
+2021-05-27 18:13:41,776 __main__     INFO     Class weights: {2: 1.0, 1: 1.26, 0: 5.48}
+2021-05-27 18:13:42,885 __main__     INFO     Creating model.
+2021-05-27 18:13:43,683 __main__     INFO     Training model.
+2021-05-27 18:14:24,529 __main__     INFO     Best loss: 0.5794, Best acc: 86.00%
+2021-05-27 18:14:24,530 __main__     INFO     Best val loss: 0.4463, Best val acc: 84.29%
+2021-05-27 18:14:24,530 __main__     INFO     Saved best model to ./train-results/dnn

@@ -737,20 +737,32 @@ def instantiate_models(n_classes):
         d_model (keras object): Discriminator.
         c_model (keras object): Classifier.
         g_model (keras object): Generator.
-        gan_model (keras object): GAN model. 
+        gan_model (keras object): GAN model.
+
+    Note:
+        Logs text representations of model if 'debug' is set.
+        Saves graphical representations of models to 'images' dir.
     """
     # Create classifier and discriminator.
     shape = RESCALE + (1,)
     d_model, c_model = define_discriminator(
         xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
     d_model.summary(print_fn=logger.debug)
+    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+        common.PRJ_DIR, 'images', 'sgan_d_model.png'), show_shapes=True, show_layer_names=True)
     c_model.summary(print_fn=logger.debug)
+    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+        common.PRJ_DIR, 'images', 'sgan_c_model.png'), show_shapes=True, show_layer_names=True)
     # Create generator.
     g_model = define_generator()
     g_model.summary(print_fn=logger.debug)
+    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+        common.PRJ_DIR, 'images', 'sgan_g_model.png'), show_shapes=True, show_layer_names=True)
     # Create gan.
     gan_model = define_gan(g_model, d_model)
     gan_model.summary(print_fn=logger.debug)
+    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+        common.PRJ_DIR, 'images', 'sgan_gan_model.png'), show_shapes=True, show_layer_names=True)
     return d_model, c_model, g_model, gan_model
 
 

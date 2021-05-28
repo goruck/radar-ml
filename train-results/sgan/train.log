@@ -1,0 +1,49 @@
+2021-05-27 19:20:19,380 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2021-05-27 19:20:19,396 __main__     INFO     Opening dataset: datasets/radar_samples_22Feb21.pickle
+2021-05-27 19:20:19,405 __main__     INFO     Opening dataset: datasets/radar_samples_26Feb21.pickle
+2021-05-27 19:20:19,415 __main__     INFO     Opening dataset: datasets/radar_samples_28Feb21.pickle
+2021-05-27 19:20:19,423 __main__     INFO     Opening dataset: datasets/radar_samples_19Oct20.pickle
+2021-05-27 19:20:19,425 __main__     INFO     Opening dataset: datasets/radar_samples_20Sep20.pickle
+2021-05-27 19:20:19,454 __main__     INFO     Opening dataset: datasets/radar_samples_20Oct20.pickle
+2021-05-27 19:20:19,455 __main__     INFO     Opening dataset: datasets/radar_samples_31Oct20.pickle
+2021-05-27 19:20:19,465 __main__     INFO     Using aliased class names.
+2021-05-27 19:20:19,466 __main__     INFO     Maybe filtering data set.
+2021-05-27 19:20:19,467 __main__     INFO     Scaling samples.
+2021-05-27 19:20:19,565 __main__     INFO     Encoding labels.
+2021-05-27 19:20:19,567 __main__     INFO     Found 3 classes and 4868 samples:
+2021-05-27 19:20:19,567 __main__     INFO     ...class: 0 "cat" count: 450
+2021-05-27 19:20:19,567 __main__     INFO     ...class: 1 "dog" count: 1952
+2021-05-27 19:20:19,567 __main__     INFO     ...class: 2 "person" count: 2466
+2021-05-27 19:20:19,567 __main__     INFO     Class weights: {2: 1.0, 1: 1.26, 0: 5.48}
+2021-05-27 19:20:24,510 __main__     INFO     Starting training loop.
+2021-05-27 19:20:24,510 __main__     INFO     n_epochs=15, n_batch=32, 1/2=16, b/e=231, steps=3465
+2021-05-27 19:22:00,348 __main__     INFO     Classifier accuracy at step 231: 66.39%
+2021-05-27 19:22:00,477 __main__     INFO     Saved: ./train-results/sgan/generated_data_0231.pickle, ./train-results/sgan/g_model_0231.h5, and ./train-results/sgan/c_model_0231.h5
+2021-05-27 19:22:48,621 __main__     INFO     Classifier accuracy at step 462: 51.83%
+2021-05-27 19:22:48,766 __main__     INFO     Saved: ./train-results/sgan/generated_data_0462.pickle, ./train-results/sgan/g_model_0462.h5, and ./train-results/sgan/c_model_0462.h5
+2021-05-27 19:23:37,207 __main__     INFO     Classifier accuracy at step 693: 41.68%
+2021-05-27 19:23:37,354 __main__     INFO     Saved: ./train-results/sgan/generated_data_0693.pickle, ./train-results/sgan/g_model_0693.h5, and ./train-results/sgan/c_model_0693.h5
+2021-05-27 19:24:25,871 __main__     INFO     Classifier accuracy at step 924: 53.90%
+2021-05-27 19:24:26,023 __main__     INFO     Saved: ./train-results/sgan/generated_data_0924.pickle, ./train-results/sgan/g_model_0924.h5, and ./train-results/sgan/c_model_0924.h5
+2021-05-27 19:25:14,625 __main__     INFO     Classifier accuracy at step 1155: 57.46%
+2021-05-27 19:25:14,764 __main__     INFO     Saved: ./train-results/sgan/generated_data_1155.pickle, ./train-results/sgan/g_model_1155.h5, and ./train-results/sgan/c_model_1155.h5
+2021-05-27 19:26:02,939 __main__     INFO     Classifier accuracy at step 1386: 60.91%
+2021-05-27 19:26:03,083 __main__     INFO     Saved: ./train-results/sgan/generated_data_1386.pickle, ./train-results/sgan/g_model_1386.h5, and ./train-results/sgan/c_model_1386.h5
+2021-05-27 19:26:51,554 __main__     INFO     Classifier accuracy at step 1617: 71.30%
+2021-05-27 19:26:51,697 __main__     INFO     Saved: ./train-results/sgan/generated_data_1617.pickle, ./train-results/sgan/g_model_1617.h5, and ./train-results/sgan/c_model_1617.h5
+2021-05-27 19:27:40,354 __main__     INFO     Classifier accuracy at step 1848: 68.26%
+2021-05-27 19:27:40,512 __main__     INFO     Saved: ./train-results/sgan/generated_data_1848.pickle, ./train-results/sgan/g_model_1848.h5, and ./train-results/sgan/c_model_1848.h5
+2021-05-27 19:28:28,964 __main__     INFO     Classifier accuracy at step 2079: 63.91%
+2021-05-27 19:28:29,138 __main__     INFO     Saved: ./train-results/sgan/generated_data_2079.pickle, ./train-results/sgan/g_model_2079.h5, and ./train-results/sgan/c_model_2079.h5
+2021-05-27 19:29:17,577 __main__     INFO     Classifier accuracy at step 2310: 70.34%
+2021-05-27 19:29:17,731 __main__     INFO     Saved: ./train-results/sgan/generated_data_2310.pickle, ./train-results/sgan/g_model_2310.h5, and ./train-results/sgan/c_model_2310.h5
+2021-05-27 19:30:06,322 __main__     INFO     Classifier accuracy at step 2541: 54.23%
+2021-05-27 19:30:06,470 __main__     INFO     Saved: ./train-results/sgan/generated_data_2541.pickle, ./train-results/sgan/g_model_2541.h5, and ./train-results/sgan/c_model_2541.h5
+2021-05-27 19:30:54,892 __main__     INFO     Classifier accuracy at step 2772: 44.06%
+2021-05-27 19:30:55,031 __main__     INFO     Saved: ./train-results/sgan/generated_data_2772.pickle, ./train-results/sgan/g_model_2772.h5, and ./train-results/sgan/c_model_2772.h5
+2021-05-27 19:31:43,878 __main__     INFO     Classifier accuracy at step 3003: 56.88%
+2021-05-27 19:31:44,046 __main__     INFO     Saved: ./train-results/sgan/generated_data_3003.pickle, ./train-results/sgan/g_model_3003.h5, and ./train-results/sgan/c_model_3003.h5
+2021-05-27 19:32:32,367 __main__     INFO     Classifier accuracy at step 3234: 59.72%
+2021-05-27 19:32:32,522 __main__     INFO     Saved: ./train-results/sgan/generated_data_3234.pickle, ./train-results/sgan/g_model_3234.h5, and ./train-results/sgan/c_model_3234.h5
+2021-05-27 19:33:20,618 __main__     INFO     Classifier accuracy at step 3465: 40.45%
+2021-05-27 19:33:20,949 __main__     INFO     Saved: ./train-results/sgan/generated_data_3465.pickle, ./train-results/sgan/g_model_3465.h5, and ./train-results/sgan/c_model_3465.h5

@@ -396,6 +396,9 @@ def main(args):
     Args:
         args (parser object): command line arguments.
 
+    Notes:
+        Logs text representations of model if 'debug' is set.
+        Saves graphical representations of model to 'images' dir.
     """
     # Log to both stdout and a file.
     log_file = os.path.join(args.results_dir, 'train.log')
@@ -420,6 +423,8 @@ def main(args):
     model = define_classifier(
         xz_shape=shape, yz_shape=shape, xy_shape=shape, n_classes=n_classes)
     model.summary(print_fn=logger.debug)
+    tf.keras.utils.plot_model(model, to_file=os.path.join(
+        common.PRJ_DIR, 'images', 'dnn_model.png'), show_shapes=True, show_layer_names=True)
     # Actual training.
     logger.info('Training model.')
     train(model, X, y, X_val, y_val, w_classes)

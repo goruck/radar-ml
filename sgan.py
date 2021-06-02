@@ -751,17 +751,17 @@ def instantiate_models(n_classes):
     tf.keras.utils.plot_model(d_model, to_file=os.path.join(
         common.PRJ_DIR, 'images', 'sgan_d_model.png'), show_shapes=True, show_layer_names=True)
     c_model.summary(print_fn=logger.debug)
-    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+    tf.keras.utils.plot_model(c_model, to_file=os.path.join(
         common.PRJ_DIR, 'images', 'sgan_c_model.png'), show_shapes=True, show_layer_names=True)
     # Create generator.
     g_model = define_generator()
     g_model.summary(print_fn=logger.debug)
-    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+    tf.keras.utils.plot_model(g_model, to_file=os.path.join(
         common.PRJ_DIR, 'images', 'sgan_g_model.png'), show_shapes=True, show_layer_names=True)
     # Create gan.
     gan_model = define_gan(g_model, d_model)
     gan_model.summary(print_fn=logger.debug)
-    tf.keras.utils.plot_model(d_model, to_file=os.path.join(
+    tf.keras.utils.plot_model(gan_model, to_file=os.path.join(
         common.PRJ_DIR, 'images', 'sgan_gan_model.png'), show_shapes=True, show_layer_names=True)
     return d_model, c_model, g_model, gan_model
 

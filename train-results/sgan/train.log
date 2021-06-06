@@ -1,49 +1,64 @@
-2021-05-29 17:45:54,185 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
-2021-05-29 17:45:54,212 __main__     INFO     Opening dataset: datasets/radar_samples_22Feb21.pickle
-2021-05-29 17:45:54,225 __main__     INFO     Opening dataset: datasets/radar_samples_26Feb21.pickle
-2021-05-29 17:45:54,240 __main__     INFO     Opening dataset: datasets/radar_samples_28Feb21.pickle
-2021-05-29 17:45:54,252 __main__     INFO     Opening dataset: datasets/radar_samples_19Oct20.pickle
-2021-05-29 17:45:54,255 __main__     INFO     Opening dataset: datasets/radar_samples_20Sep20.pickle
-2021-05-29 17:45:54,296 __main__     INFO     Opening dataset: datasets/radar_samples_20Oct20.pickle
-2021-05-29 17:45:54,298 __main__     INFO     Opening dataset: datasets/radar_samples_31Oct20.pickle
-2021-05-29 17:45:54,314 __main__     INFO     Using aliased class names.
-2021-05-29 17:45:54,315 __main__     INFO     Maybe filtering data set.
-2021-05-29 17:45:54,316 __main__     INFO     Scaling samples.
-2021-05-29 17:45:54,413 __main__     INFO     Encoding labels.
-2021-05-29 17:45:54,418 __main__     INFO     Found 3 classes and 4868 samples:
-2021-05-29 17:45:54,418 __main__     INFO     ...class: 0 "cat" count: 450
-2021-05-29 17:45:54,418 __main__     INFO     ...class: 1 "dog" count: 1952
-2021-05-29 17:45:54,418 __main__     INFO     ...class: 2 "person" count: 2466
-2021-05-29 17:45:54,418 __main__     INFO     Class weights: {2: 1.0, 1: 1.26, 0: 5.48}
-2021-05-29 17:45:59,702 __main__     INFO     Starting training loop.
-2021-05-29 17:45:59,702 __main__     INFO     n_epochs=15, n_batch=32, 1/2=16, b/e=231, steps=3465
-2021-05-29 17:47:42,583 __main__     INFO     Classifier accuracy at step 231: 68.18%
-2021-05-29 17:47:42,756 __main__     INFO     Saved: ./train-results/sgan/generated_data_0231.pickle, ./train-results/sgan/g_model_0231.h5, and ./train-results/sgan/c_model_0231.h5
-2021-05-29 17:48:30,579 __main__     INFO     Classifier accuracy at step 462: 39.32%
-2021-05-29 17:48:30,727 __main__     INFO     Saved: ./train-results/sgan/generated_data_0462.pickle, ./train-results/sgan/g_model_0462.h5, and ./train-results/sgan/c_model_0462.h5
-2021-05-29 17:49:19,046 __main__     INFO     Classifier accuracy at step 693: 39.87%
-2021-05-29 17:49:19,195 __main__     INFO     Saved: ./train-results/sgan/generated_data_0693.pickle, ./train-results/sgan/g_model_0693.h5, and ./train-results/sgan/c_model_0693.h5
-2021-05-29 17:50:07,303 __main__     INFO     Classifier accuracy at step 924: 42.71%
-2021-05-29 17:50:07,459 __main__     INFO     Saved: ./train-results/sgan/generated_data_0924.pickle, ./train-results/sgan/g_model_0924.h5, and ./train-results/sgan/c_model_0924.h5
-2021-05-29 17:50:55,768 __main__     INFO     Classifier accuracy at step 1155: 61.85%
-2021-05-29 17:50:55,924 __main__     INFO     Saved: ./train-results/sgan/generated_data_1155.pickle, ./train-results/sgan/g_model_1155.h5, and ./train-results/sgan/c_model_1155.h5
-2021-05-29 17:51:43,969 __main__     INFO     Classifier accuracy at step 1386: 40.26%
-2021-05-29 17:51:44,123 __main__     INFO     Saved: ./train-results/sgan/generated_data_1386.pickle, ./train-results/sgan/g_model_1386.h5, and ./train-results/sgan/c_model_1386.h5
-2021-05-29 17:52:32,268 __main__     INFO     Classifier accuracy at step 1617: 44.72%
-2021-05-29 17:52:32,426 __main__     INFO     Saved: ./train-results/sgan/generated_data_1617.pickle, ./train-results/sgan/g_model_1617.h5, and ./train-results/sgan/c_model_1617.h5
-2021-05-29 17:53:20,994 __main__     INFO     Classifier accuracy at step 1848: 37.22%
-2021-05-29 17:53:21,147 __main__     INFO     Saved: ./train-results/sgan/generated_data_1848.pickle, ./train-results/sgan/g_model_1848.h5, and ./train-results/sgan/c_model_1848.h5
-2021-05-29 17:54:09,703 __main__     INFO     Classifier accuracy at step 2079: 56.14%
-2021-05-29 17:54:09,874 __main__     INFO     Saved: ./train-results/sgan/generated_data_2079.pickle, ./train-results/sgan/g_model_2079.h5, and ./train-results/sgan/c_model_2079.h5
-2021-05-29 17:54:58,323 __main__     INFO     Classifier accuracy at step 2310: 27.75%
-2021-05-29 17:54:58,472 __main__     INFO     Saved: ./train-results/sgan/generated_data_2310.pickle, ./train-results/sgan/g_model_2310.h5, and ./train-results/sgan/c_model_2310.h5
-2021-05-29 17:55:47,246 __main__     INFO     Classifier accuracy at step 2541: 56.18%
-2021-05-29 17:55:47,396 __main__     INFO     Saved: ./train-results/sgan/generated_data_2541.pickle, ./train-results/sgan/g_model_2541.h5, and ./train-results/sgan/c_model_2541.h5
-2021-05-29 17:56:35,562 __main__     INFO     Classifier accuracy at step 2772: 50.78%
-2021-05-29 17:56:35,702 __main__     INFO     Saved: ./train-results/sgan/generated_data_2772.pickle, ./train-results/sgan/g_model_2772.h5, and ./train-results/sgan/c_model_2772.h5
-2021-05-29 17:57:24,260 __main__     INFO     Classifier accuracy at step 3003: 50.66%
-2021-05-29 17:57:24,435 __main__     INFO     Saved: ./train-results/sgan/generated_data_3003.pickle, ./train-results/sgan/g_model_3003.h5, and ./train-results/sgan/c_model_3003.h5
-2021-05-29 17:58:12,990 __main__     INFO     Classifier accuracy at step 3234: 50.70%
-2021-05-29 17:58:13,145 __main__     INFO     Saved: ./train-results/sgan/generated_data_3234.pickle, ./train-results/sgan/g_model_3234.h5, and ./train-results/sgan/c_model_3234.h5
-2021-05-29 17:59:01,828 __main__     INFO     Classifier accuracy at step 3465: 65.22%
-2021-05-29 17:59:01,978 __main__     INFO     Saved: ./train-results/sgan/generated_data_3465.pickle, ./train-results/sgan/g_model_3465.h5, and ./train-results/sgan/c_model_3465.h5
+2021-06-06 08:59:42,386 __main__     INFO     Opening dataset: datasets/radar_samples_25Nov20.pickle
+2021-06-06 08:59:42,405 __main__     INFO     Opening dataset: datasets/radar_samples_22Feb21.pickle
+2021-06-06 08:59:42,414 __main__     INFO     Opening dataset: datasets/radar_samples_26Feb21.pickle
+2021-06-06 08:59:42,425 __main__     INFO     Opening dataset: datasets/radar_samples_28Feb21.pickle
+2021-06-06 08:59:42,435 __main__     INFO     Opening dataset: datasets/radar_samples_19Oct20.pickle
+2021-06-06 08:59:42,436 __main__     INFO     Opening dataset: datasets/radar_samples_20Sep20.pickle
+2021-06-06 08:59:42,471 __main__     INFO     Opening dataset: datasets/radar_samples_20Oct20.pickle
+2021-06-06 08:59:42,472 __main__     INFO     Opening dataset: datasets/radar_samples_31Oct20.pickle
+2021-06-06 08:59:42,483 __main__     INFO     Using aliased class names.
+2021-06-06 08:59:42,484 __main__     INFO     Maybe filtering data set.
+2021-06-06 08:59:42,485 __main__     INFO     Scaling samples.
+2021-06-06 08:59:42,593 __main__     INFO     Encoding labels.
+2021-06-06 08:59:42,594 __main__     INFO     Found 3 classes and 4868 samples:
+2021-06-06 08:59:42,595 __main__     INFO     ...class: 0 "cat" count: 450
+2021-06-06 08:59:42,595 __main__     INFO     ...class: 1 "dog" count: 1952
+2021-06-06 08:59:42,595 __main__     INFO     ...class: 2 "person" count: 2466
+2021-06-06 08:59:42,595 __main__     INFO     Class weights: {2: 1.0, 1: 1.26, 0: 5.48}
+2021-06-06 08:59:47,773 __main__     INFO     Starting training loop.
+2021-06-06 08:59:47,773 __main__     INFO     n_epochs=15, n_batch=32, 1/2=16, b/e=231, steps=3465
+2021-06-06 09:00:44,038 __main__     INFO     Classifier accuracy at step 231: 56.90%
+2021-06-06 09:00:44,039 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:00:44,207 __main__     INFO     Saved: ./train-results/sgan/generated_data_0231.pickle, ./train-results/sgan/g_model_0231.h5, and ./train-results/sgan/c_model_0231.h5
+2021-06-06 09:01:33,375 __main__     INFO     Classifier accuracy at step 462: 71.53%
+2021-06-06 09:01:33,376 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:01:33,535 __main__     INFO     Saved: ./train-results/sgan/generated_data_0462.pickle, ./train-results/sgan/g_model_0462.h5, and ./train-results/sgan/c_model_0462.h5
+2021-06-06 09:02:23,111 __main__     INFO     Classifier accuracy at step 693: 67.54%
+2021-06-06 09:02:23,112 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:02:23,242 __main__     INFO     Saved: ./train-results/sgan/generated_data_0693.pickle, ./train-results/sgan/g_model_0693.h5, and ./train-results/sgan/c_model_0693.h5
+2021-06-06 09:03:13,151 __main__     INFO     Classifier accuracy at step 924: 55.57%
+2021-06-06 09:03:13,153 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:03:13,309 __main__     INFO     Saved: ./train-results/sgan/generated_data_0924.pickle, ./train-results/sgan/g_model_0924.h5, and ./train-results/sgan/c_model_0924.h5
+2021-06-06 09:04:03,243 __main__     INFO     Classifier accuracy at step 1155: 47.97%
+2021-06-06 09:04:03,244 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:04:03,402 __main__     INFO     Saved: ./train-results/sgan/generated_data_1155.pickle, ./train-results/sgan/g_model_1155.h5, and ./train-results/sgan/c_model_1155.h5
+2021-06-06 09:04:52,887 __main__     INFO     Classifier accuracy at step 1386: 40.37%
+2021-06-06 09:04:52,888 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:04:53,044 __main__     INFO     Saved: ./train-results/sgan/generated_data_1386.pickle, ./train-results/sgan/g_model_1386.h5, and ./train-results/sgan/c_model_1386.h5
+2021-06-06 09:05:43,284 __main__     INFO     Classifier accuracy at step 1617: 41.17%
+2021-06-06 09:05:43,285 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:05:43,456 __main__     INFO     Saved: ./train-results/sgan/generated_data_1617.pickle, ./train-results/sgan/g_model_1617.h5, and ./train-results/sgan/c_model_1617.h5
+2021-06-06 09:06:34,013 __main__     INFO     Classifier accuracy at step 1848: 40.10%
+2021-06-06 09:06:34,014 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:06:34,159 __main__     INFO     Saved: ./train-results/sgan/generated_data_1848.pickle, ./train-results/sgan/g_model_1848.h5, and ./train-results/sgan/c_model_1848.h5
+2021-06-06 09:07:24,240 __main__     INFO     Classifier accuracy at step 2079: 40.14%
+2021-06-06 09:07:24,241 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:07:24,398 __main__     INFO     Saved: ./train-results/sgan/generated_data_2079.pickle, ./train-results/sgan/g_model_2079.h5, and ./train-results/sgan/c_model_2079.h5
+2021-06-06 09:08:14,267 __main__     INFO     Classifier accuracy at step 2310: 40.20%
+2021-06-06 09:08:14,268 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:08:14,426 __main__     INFO     Saved: ./train-results/sgan/generated_data_2310.pickle, ./train-results/sgan/g_model_2310.h5, and ./train-results/sgan/c_model_2310.h5
+2021-06-06 09:09:05,108 __main__     INFO     Classifier accuracy at step 2541: 40.12%
+2021-06-06 09:09:05,109 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:09:05,272 __main__     INFO     Saved: ./train-results/sgan/generated_data_2541.pickle, ./train-results/sgan/g_model_2541.h5, and ./train-results/sgan/c_model_2541.h5
+2021-06-06 09:09:56,888 __main__     INFO     Classifier accuracy at step 2772: 40.26%
+2021-06-06 09:09:56,889 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:09:57,041 __main__     INFO     Saved: ./train-results/sgan/generated_data_2772.pickle, ./train-results/sgan/g_model_2772.h5, and ./train-results/sgan/c_model_2772.h5
+2021-06-06 09:10:46,735 __main__     INFO     Classifier accuracy at step 3003: 40.16%
+2021-06-06 09:10:46,736 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:10:46,893 __main__     INFO     Saved: ./train-results/sgan/generated_data_3003.pickle, ./train-results/sgan/g_model_3003.h5, and ./train-results/sgan/c_model_3003.h5
+2021-06-06 09:11:36,778 __main__     INFO     Classifier accuracy at step 3234: 40.67%
+2021-06-06 09:11:36,779 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:11:36,936 __main__     INFO     Saved: ./train-results/sgan/generated_data_3234.pickle, ./train-results/sgan/g_model_3234.h5, and ./train-results/sgan/c_model_3234.h5
+2021-06-06 09:12:26,532 __main__     INFO     Classifier accuracy at step 3465: 42.24%
+2021-06-06 09:12:26,534 tensorflow   WARNING  Compiled the loaded model, but the compiled metrics have yet to be built. `model.compile_metrics` will be empty until you train or evaluate the model.
+2021-06-06 09:12:26,675 __main__     INFO     Saved: ./train-results/sgan/generated_data_3465.pickle, ./train-results/sgan/g_model_3465.h5, and ./train-results/sgan/c_model_3465.h5

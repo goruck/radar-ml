@@ -19,7 +19,7 @@ The steps to gather data using self-supervised learning, train and use a radar-b
 
 Vayyar’s radar chip in the Walabot reference design is a great choice to develop these solutions given its flexibility and wide availability. An object detection model running on Google’s Coral Edge Tensor Processing Unit (TPU) is another great choice since it can perform inferences many times faster than the radar can scan for targets.
 
-See the companion Medium article, [Teaching Radar to Understand the Home](https://towardsdatascience.com/teaching-radar-to-understand-the-home-ee78e7e4a0be), for additional information. 
+See companion Medium articles, [Teaching Radar to Understand the Home](https://towardsdatascience.com/teaching-radar-to-understand-the-home-ee78e7e4a0be), [Using Stochastic Gradient Descent to Train Linear Classifiers](https://towardsdatascience.com/using-stochastic-gradient-descent-to-train-linear-classifiers-c80f6aeaff76) and [How to Implement Deep Neural Networks for Radar Image Classification](https://towardsdatascience.com/how-to-implement-deep-neural-networks-for-radar-image-classification-acb1bfcd7f3) for additional information. 
 
 # Training Setup
 A photo of the hardware created for this project is shown below. The Walabot radar is mounted up front and horizontally with a camera located at its top center. The white box contains the Google Coral Edge TPU with the camera connected to it over USB and the black box contains a Raspberry Pi 4 with the radar connected to it over another USB.

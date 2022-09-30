@@ -22,7 +22,7 @@ ipython==7.21.0
 ipython-genutils==0.2.0
 isort==5.7.0
 jedi==0.18.0
-joblib==1.0.0
+joblib==1.2.0
 jupyter-client==6.1.12
 jupyter-core==4.7.1
 keras-nightly==2.5.0.dev2021032900
